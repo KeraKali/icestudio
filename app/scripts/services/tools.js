@@ -969,6 +969,14 @@ angular
               : arch === 'xc7'
                 ? 'main.xdc'
                 : 'main.pcf';
+        //-- Bitstream file apio produces, by architecture:
+        //--   ice40 -> hardware.bin · ecp5/xc7 -> hardware.bit · gowin -> .fs
+        var bitstreamName =
+          arch === 'ecp5' || arch === 'xc7'
+            ? 'hardware.bit'
+            : arch === 'gowin'
+              ? 'hardware.fs'
+              : 'hardware.bin';
         var usb = (board.info && board.info.usb) || {};
         var projectDir =
           project.dirname ||
@@ -984,7 +992,7 @@ angular
             common.BUILD_DIR,
             '_build',
             'default',
-            'hardware.bin'
+            bitstreamName
           ),
           VERILOG: nodePath.join(common.BUILD_DIR, 'main.v'),
           ARCH: arch,
