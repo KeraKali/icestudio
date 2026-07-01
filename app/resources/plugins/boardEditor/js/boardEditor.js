@@ -1095,7 +1095,9 @@ function cloneBoard() {
 }
 
 function validBoardName(name) {
-  return /^[A-Za-z0-9._-]+$/.test(name);
+  //-- Parentheses are allowed: many shipped board ids use them to tag the
+  //-- programmer, e.g. "ColorLight-i5-v7.0_(FT2232H)".
+  return /^[A-Za-z0-9._()-]+$/.test(name);
 }
 
 function saveBoard() {
@@ -1114,7 +1116,9 @@ function saveBoard() {
   }
   if (!validBoardName(data.name)) {
     alertify.error(
-      gettextCatalog.getString('Invalid board id (use letters, numbers, . _ -)')
+      gettextCatalog.getString(
+        'Invalid board id (use letters, numbers, . _ - ( ))'
+      )
     );
     return;
   }
