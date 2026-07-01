@@ -5,5 +5,8 @@
   "interface": "FTDI",
   "arch": "gowin",
   "FPGAResources": {},
-  "group": "GOWIN"
+  "group": "GOWIN",
+  "apio": {
+    "board": "sipeed-tang-nano-1k"
+  }
 }
