@@ -1,9 +1,14 @@
 {
   "label": "ColorLight-i5-v7.0_(FT232H)",
+  "mode": "apio",
   "SysClkMhz": 25,
-  "datasheet": "https://github.com/wuxx/Colorlight-FPGA-Projects",
-  "interface": "FTDI",
   "arch": "ecp5",
+  "interface": "FTDI",
+  "datasheet": "https://github.com/wuxx/Colorlight-FPGA-Projects",
+  "group": "ECP5",
+  "apio": {
+    "board": "colorlight-i5-v7-0"
+  },
   "FPGAResources": {
     "ffs": 24288,
     "luts": 24288,
@@ -11,5 +16,9 @@
     "plbs": 660,
     "brams": 30
   },
-  "group": "ECP5"
+  "commands": {
+    "upload": [
+      "{APIO_CMD} raw -- openFPGALoader -c ft232 \"{BITSTREAM}\""
+    ]
+  }
 }
