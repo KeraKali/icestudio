@@ -44,4 +44,4 @@ set_io --warn-no-port IO5 13
 set_io --warn-no-port IO6 21
 set_io --warn-no-port IO7 20
 set_io --warn-no-port IO8 19
-set_io --warn-no-port I09 18
+set_io --warn-no-port IO9 18

@@ -29,5 +29,5 @@
   {"name": "IO6",  "value": "21", "type": "inout"},
   {"name": "IO7",  "value": "20", "type": "inout"},
   {"name": "IO8",  "value": "19", "type": "inout"},
-  {"name": "I09",  "value": "18", "type": "inout"}
+  {"name": "IO9",  "value": "18", "type": "inout"}
 ]
