@@ -1,9 +1,7 @@
 <a name="main-page"></a>  
 [![](https://github.com/FPGAwars/icestudio-wiki/raw/main/Logos/icestudio-github.svg)](https://github.com/FPGAwars/icestudio/wiki)
 
-[![Build Status][build-image]][build-url]
-[![Build Windows][build-win-image]][build-win-url]  
-[![Build Mac][build-mac-image]][build-mac-url]  
+[![Nightly Build][build-image]][build-url]  
 
 ![Version (Stable)][version-image]
 ![Version (WIP)][version-image-wip]  
@@ -154,14 +152,6 @@ Licensed under [GPL 2.0](http://opensource.org/licenses/GPL-2.0) and [Creative C
 
 [license-url]: http://opensource.org/licenses/GPL-2.0
 
-[build-image]: https://github.com/FPGAwars/icestudio/actions/workflows/main.yml/badge.svg
+[build-image]: https://github.com/FPGAwars/icestudio/actions/workflows/nightly.yml/badge.svg
 
-[build-url]: https://github.com/FPGAwars/icestudio/actions/workflows/main.yml
-
-[build-win-image]: https://github.com/FPGAwars/icestudio/actions/workflows/main-windows.yml/badge.svg
-
-[build-win-url]: https://github.com/FPGAwars/icestudio/actions/workflows/main-windows.yml
-
-[build-mac-image]: https://github.com/FPGAwars/icestudio/actions/workflows/main-osx-arm64.yml/badge.svg
-
-[build-mac-url]: https://github.com/FPGAwars/icestudio/actions/workflows/main-osx-arm64.yml
+[build-url]: https://github.com/FPGAwars/icestudio/actions/workflows/nightly.yml
