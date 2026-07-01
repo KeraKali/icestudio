@@ -977,11 +977,23 @@ angular
           BUILD_DIR: common.BUILD_DIR,
           TOP: 'main',
           CONSTRAINT_FILE: nodePath.join(common.BUILD_DIR, constraintName),
-          BITSTREAM: nodePath.join(common.BUILD_DIR, 'hardware.bin'),
+          //-- apio (>=1.3) builds into <build>/_build/<env>/, and icestudio's
+          //-- apio.ini always declares [env:default], so the bitstream is here
+          //-- (NOT at the build-dir root as in older apio).
+          BITSTREAM: nodePath.join(
+            common.BUILD_DIR,
+            '_build',
+            'default',
+            'hardware.bin'
+          ),
           VERILOG: nodePath.join(common.BUILD_DIR, 'main.v'),
           ARCH: arch,
           APIO: utils.getApioExecutable(),
           APIO_HOME: common.APIO_HOME || '',
+          //-- Full env-prefixed apio invocation (sets APIO_HOME, correct on
+          //-- every OS). Use it in custom commands that shell out through apio,
+          //-- e.g. a custom FTDI upload: "{APIO_CMD} raw -- openFPGALoader ...".
+          APIO_CMD: common.APIO_CMD || '',
           PROJECT_DIR: projectDir,
           BOARD: board.apioBoard || board.name,
           FPGA: (board.info && board.info.fpga) || '',
