@@ -182,6 +182,14 @@
   margin-bottom: 6px;
   word-break: break-word;
 }
+/* The installed-check reuses .ihub-card--check, which is absolute-positioned for
+   the card grid. In the detail title (not positioned) that absolute escaped to
+   the wrapper and landed over the search box; here it must flow inline, right
+   after the collection name. */
+.ihub-detail--title .ihub-card--check {
+  position: static;
+  margin-left: 4px;
+}
 .ihub-detail--meta {
   font-size: 11px;
   margin-bottom: 6px;
