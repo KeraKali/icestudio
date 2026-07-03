@@ -479,9 +479,18 @@ angular
         var graphData = $scope.graph.toJSON();
         var p = utils.cellsToProject(graphData.cells);
         var tmp = utils.clone(common.allDependencies[block.type]);
+        //-- Only mark the project as changed when the sub-design ACTUALLY
+        //-- differs from what is stored. Navigating into a module and back out
+        //-- without editing must not prompt to save on close; keep the title
+        //-- asterisk in sync with the change flag.
+        var subdesignChanged =
+          JSON.stringify(tmp.design.graph) !== JSON.stringify(p.design.graph);
         tmp.design.graph = p.design.graph;
         common.allDependencies[block.type] = tmp;
-        project.changed = true;
+        if (subdesignChanged) {
+          project.changed = true;
+          project.updateTitle();
+        }
       }
 
       $scope.editModeToggle = function ($event) {
