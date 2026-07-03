@@ -135,6 +135,11 @@
   color: #fff;
   border-color: #2d8f5b;
 }
+.be-badge.be-user {
+  background: #3b6ea5;
+  color: #fff;
+  border-color: #3b6ea5;
+}
 .be-badge.be-distribution {
   opacity: 0.7;
 }

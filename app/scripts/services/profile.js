@@ -15,6 +15,7 @@ angular
       allowInoutPorts: false, //-- Tri-state (inout ports) available (not included by default)
       collection: '', //-- Selected collection
       externalCollections: '', //-- Path for the external collections
+      externalBoards: '', //-- Path for the user boards ('' = <Documents>/Icestudio/boards)
       externalPlugins: '', //-- Path for the external paths
       language: '', //-- Current selected language
       uiTheme: 'light', //-- Theme
@@ -59,6 +60,7 @@ angular
             language: data.language || 'en',
             uiTheme: data.uiTheme || 'dark',
             externalCollections: data.externalCollections || '',
+            externalBoards: data.externalBoards || '',
             externalPlugins: data.externalPlugins || '',
             remoteHostname: data.remoteHostname || '',
             showFPGAResources: data.showFPGAResources || false,

@@ -31,14 +31,18 @@
 //--     * type:   FPGA familty and type
 //--     * mode:   "apio" (default) | "integrated" | "project"
 //--     * apioBoard: Identifier passed to apio.ini (defaults to name)
-//--     * origin: "distribution" | "project"
+//--     * origin: "distribution" | "user" | "project"
 //--     * readOnly: true for distribution boards (editor cannot modify them)
 //--
 //-- In addition to the distribution boards (resources/boards, listed in
-//-- menu.json), boards can be defined inside the ACTIVE PROJECT, in the
-//-- folder "<projectDir>/boards/<boardname>". Those are auto-discovered
-//-- (no menu.json) and merged into common.boards, overriding distribution
-//-- boards with the same name. Call loadBoards(projectDir) to include them.
+//-- menu.json), boards can be auto-discovered (no menu.json) from two
+//-- more locations and merged into common.boards:
+//--    * USER boards: "<userBoardsDir>/<boardname>", where userBoardsDir is
+//--      the profile 'externalBoards' path or, when empty, the default
+//--      <Documents>/Icestudio/boards. ALWAYS scanned by loadBoards().
+//--    * PROJECT boards: "<projectDir>/boards/<boardname>" of the active
+//--      project. Included when calling loadBoards(projectDir).
+//-- Same-name boards override each other: distribution < user < project.
 
 //---------------------------------------------------------------
 //-- MENU menu.json
@@ -49,9 +53,20 @@
 
 angular
   .module('icestudio')
-  .service('boards', function (utils, common, nodeFs, nodePath) {
+  .service('boards', function (utils, common, profile, nodeFs, nodePath) {
     //-- Default board
     const DEFAULT = 'alhambra-ii';
+
+    //-----------------------------------------------------------------
+    //-- Resolve the user boards folder: the profile 'externalBoards'
+    //-- path or, when empty, the default <Documents>/Icestudio/boards
+    //-----------------------------------------------------------------
+    this.getUserBoardsDir = function () {
+      return (
+        profile.get('externalBoards') || common.DEFAULT_EXTERNAL_BOARDS_DIR
+      );
+    };
+    var getUserBoardsDir = this.getUserBoardsDir;
 
     //-----------------------------------------------------------------
     //-- Read all the boards FILES and store all the information
@@ -64,12 +79,17 @@ angular
       //-- driven by menu.json (unchanged discovery)
       let dist = scanDistributionBoards();
 
+      //-- Scan the user boards (profile 'externalBoards' path, default
+      //-- <Documents>/Icestudio/boards). Always scanned, project-independent.
+      let user = scanUserBoards();
+
       //-- Scan the boards defined inside the active project (<projectDir>/boards),
       //-- auto-discovered (no menu.json needed). Optional.
       let proj = projectDir ? scanProjectBoards(projectDir) : [];
 
-      //-- Merge: project boards override distribution boards with the same name
-      common.boards = mergeBoards(dist, proj);
+      //-- Merge: later sources override earlier ones with the same name
+      //-- (distribution < user < project)
+      common.boards = mergeBoards([dist, user, proj]);
     };
 
     //-----------------------------------------------------------------
@@ -80,7 +100,7 @@ angular
     //--  boardPath: absolute/relative path to the board directory
     //--  boardname: board identifier (directory name)
     //--  type:      FPGA family group (for the board menu UI)
-    //--  origin:    'distribution' | 'project'
+    //--  origin:    'distribution' | 'user' | 'project'
     //-----------------------------------------------------------------
     function readBoardDir(boardPath, boardname, type, origin) {
       //-- Every board should have at least their three MANDATORY files:
@@ -126,7 +146,8 @@ angular
         type: type, //-- FPGA family type
         mode: mode, //-- apio | integrated | project
         apioBoard: apioBoard, //-- identifier passed to apio.ini
-        origin: origin, //-- distribution | project
+        origin: origin, //-- distribution | user | project
+        path: nodePath.resolve(boardPath), //-- board definition folder
         readOnly: origin === 'distribution', //-- distribution boards are read-only
       };
     }
@@ -182,19 +203,15 @@ angular
     }
 
     //-----------------------------------------------------------------
-    //-- Scan the boards defined inside the active project directory:
-    //-- <projectDir>/boards/<boardname>. These are AUTO-DISCOVERED:
-    //-- there is no menu.json, every subfolder with the three mandatory
-    //-- files is loaded. The FPGA family group is taken from
-    //-- info.group/info.type, defaulting to "PROJECT".
+    //-- Scan a folder of AUTO-DISCOVERED boards: there is no menu.json,
+    //-- every subfolder with the three mandatory files is loaded. The
+    //-- FPGA family group is taken from info.group/info.type, with the
+    //-- given default. Used for the user and project boards.
     //-----------------------------------------------------------------
-    function scanProjectBoards(projectDir) {
+    function scanAutoBoards(path, origin, defaultGroup) {
       let boards = [];
 
-      //-- The project boards live in "<projectDir>/boards"
-      let path = nodePath.join(projectDir, 'boards');
-
-      //-- No boards folder in the project: nothing to scan
+      //-- No boards folder: nothing to scan
       try {
         if (!nodeFs.statSync(path).isDirectory()) {
           return boards;
@@ -216,17 +233,17 @@ angular
         try {
           //-- Read the info first (if present) to find the menu group
           let info = readJSONFile(boardPath, 'info.json');
-          let type = info.group || info.type || 'PROJECT';
+          let type = info.group || info.type || defaultGroup;
 
-          let board = readBoardDir(boardPath, boardname, type, 'project');
+          let board = readBoardDir(boardPath, boardname, type, origin);
           if (board) {
-            //-- A project board is just a board whose definition lives in the
-            //-- project ('origin' === 'project'); its build strategy is the
-            //-- normal mode (apio by default).
+            //-- A user/project board is just a board whose definition lives
+            //-- outside the distribution; its build strategy is the normal
+            //-- mode (apio by default).
             boards.push(board);
           }
         } catch (error) {
-          console.error('Project board not well configured', error.message);
+          console.error(origin + ' board not well configured', error.message);
         }
       });
 
@@ -234,11 +251,32 @@ angular
     }
 
     //-----------------------------------------------------------------
-    //-- Merge distribution and project boards. Project boards OVERRIDE
-    //-- distribution boards with the same name (keeps the bare-name
-    //-- contract used by project.design.board).
+    //-- Boards defined inside the active project directory:
+    //-- <projectDir>/boards/<boardname>
     //-----------------------------------------------------------------
-    function mergeBoards(dist, proj) {
+    function scanProjectBoards(projectDir) {
+      return scanAutoBoards(
+        nodePath.join(projectDir, 'boards'),
+        'project',
+        'PROJECT'
+      );
+    }
+
+    //-----------------------------------------------------------------
+    //-- User boards: custom boards living in the user boards folder
+    //-- (profile 'externalBoards', default <Documents>/Icestudio/boards).
+    //-- Scanned on EVERY loadBoards call, independently of the project.
+    //-----------------------------------------------------------------
+    function scanUserBoards() {
+      return scanAutoBoards(getUserBoardsDir(), 'user', 'USER');
+    }
+
+    //-----------------------------------------------------------------
+    //-- Merge the board sources. Later sources OVERRIDE earlier ones
+    //-- with the same name (keeps the bare-name contract used by
+    //-- project.design.board): distribution < user < project.
+    //-----------------------------------------------------------------
+    function mergeBoards(sources) {
       let byName = {};
       let order = [];
 
@@ -249,8 +287,9 @@ angular
         byName[board.name] = board;
       }
 
-      dist.forEach(add);
-      proj.forEach(add);
+      sources.forEach(function (list) {
+        list.forEach(add);
+      });
 
       return order.map(function (name) {
         return byName[name];

@@ -2852,3 +2852,57 @@ msgstr "Importar constraints"
 
 msgid "Import a constraint file (PCF/LPF/CST/XDC) into the pinout"
 msgstr "Importar un fichero de restricciones (PCF/LPF/CST/XDC) al pinout"
+
+msgid "New board (will be saved into the user boards folder)"
+msgstr "Placa nueva (se guardará en la carpeta de placas de usuario)"
+
+msgid "Delete user board \"{id}\"? This removes its folder."
+msgstr "¿Eliminar la placa de usuario \"{id}\"? Esto borra su carpeta."
+
+msgid "User board"
+msgstr "Placa de usuario"
+
+msgid "Custom boards"
+msgstr "Placas personalizadas"
+
+msgid "Custom boards updated"
+msgstr "Placas personalizadas actualizadas"
+
+msgid "Please select a directory for the custom boards"
+msgstr "Selecciona un directorio para las placas personalizadas"
+
+msgid "Configure now"
+msgstr "Configurar ahora"
+
+msgid "Later"
+msgstr "Más tarde"
+
+msgid "New feature: custom boards"
+msgstr "Nueva característica: placas personalizadas"
+
+msgid ""
+"This version adds a custom boards folder: any board you place or create "
+"inside it (same format as the distribution boards) is always available in "
+"every board list, without copying it into each project."
+msgstr ""
+"Esta versión añade una carpeta de placas personalizadas: cualquier placa "
+"que coloques o crees en ella (mismo formato que las de la distribución) "
+"está siempre disponible en todos los listados de placas, sin copiarla en "
+"cada proyecto."
+
+msgid "You can change the folder at any time in Edit > Preferences > Custom boards."
+msgstr ""
+"Puedes cambiar la carpeta en cualquier momento en Editar > Preferencias > "
+"Placas personalizadas."
+
+msgid ""
+"Select a directory for your custom boards. Icestudio will always scan this "
+"folder and offer any board you place or create inside it (same format as "
+"the distribution boards) in every board list, without copying it into each "
+"project. This folder is required and must exist."
+msgstr ""
+"Selecciona un directorio para tus placas personalizadas. Icestudio "
+"escaneará siempre esta carpeta y ofrecerá cualquier placa que coloques o "
+"crees en ella (mismo formato que las placas de la distribución) en todos "
+"los listados de placas, sin copiarla en cada proyecto. Esta carpeta es "
+"obligatoria y debe existir."

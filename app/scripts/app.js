@@ -167,6 +167,13 @@ angular.module('icestudio', ['ui.bootstrap', 'ngRoute', 'gettext']).run(
       );
       iceConsole.log('\n\n');
 
+      //-- Re-scan the boards now that the profile is loaded: the user boards
+      //-- folder (profile 'externalBoards') was unknown in the startup
+      //-- loadBoards() above. This must run BEFORE the board selection below;
+      //-- otherwise a persisted user board would silently fall back to the
+      //-- default board and overwrite the profile.
+      boards.loadBoards();
+
       collections.loadAllCollections();
 
       utils.loadLanguage(profile, function () {
@@ -249,6 +256,13 @@ angular.module('icestudio', ['ui.bootstrap', 'ngRoute', 'gettext']).run(
               clearInterval(wizPoll);
             }
           }, 500);
+        } else {
+          //-- Existing profile: the Setup Wizard will not run, so announce
+          //-- features added after this profile was created (handled in
+          //-- MenuCtrl). Small delay so the startup toasts/windows settle.
+          setTimeout(function () {
+            $(document).trigger('icestudio:announceNewFeatures');
+          }, 3000);
         }
       });
     });

@@ -163,6 +163,16 @@ angular.module('icestudio').service(
       'collections'
     );
 
+    //-- Default folder for the user boards: custom board definitions placed
+    //-- here (same format as resources/boards/<id>) are always scanned and
+    //-- offered in every board list. Sibling of the collections default.
+    //-- Overridable with the profile 'externalBoards' key.
+    this.DEFAULT_EXTERNAL_BOARDS_DIR = nodePath.join(
+      this.DOCUMENTS_DIR,
+      'Icestudio',
+      'boards'
+    );
+
     this.APIO_HOME = nodePath.join(this.ICESTUDIO_DIR, 'apio');
     this.PROFILE_PATH = nodePath.join(this.ICESTUDIO_DIR, 'profile.json');
 

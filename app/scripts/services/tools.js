@@ -14,6 +14,7 @@ angular
       utils,
       forms,
       common,
+      boards,
       gettextCatalog,
       nodeGettext,
       nodeFs,
@@ -206,12 +207,12 @@ angular
                 return noopCustom(actionKey);
               }
 
-              //-- apio fallback. For project boards, apio supports project-level
-              //-- definitions (boards.jsonc/fpgas.jsonc/programmers.jsonc): copy
-              //-- them into the build dir so apio can find them.
-              if (board && board.origin === 'project') {
-                copyProjectBoardConfigs();
-              }
+              //-- apio fallback. For project and user boards, apio supports
+              //-- custom definitions (boards.jsonc/fpgas.jsonc/
+              //-- programmers.jsonc): sync them into the build dir so apio
+              //-- can find them (and stale copies from a previous board do
+              //-- not leak into distribution-board builds).
+              syncCustomBoardConfigs(board);
 
               if (hostname) {
                 return executeRemote(commands, hostname);
@@ -867,26 +868,44 @@ angular
         }
       }
 
-      //-- For "project" boards, copy the apio custom-board definition files
-      //-- (boards.jsonc / fpgas.jsonc / programmers.jsonc) from the project
-      //-- directory into the build directory, where apio (run with
-      //-- -p BUILD_DIR) can find them.
-      function copyProjectBoardConfigs() {
-        var dir =
-          project.dirname ||
-          (project.filepath ? utils.dirname(project.filepath) : '');
-        if (!dir) {
-          return;
+      //-- Sync the apio custom-board definition files (boards.jsonc /
+      //-- fpgas.jsonc / programmers.jsonc) with the build directory, where
+      //-- apio (run with -p BUILD_DIR) finds them. For "project" boards they
+      //-- come from the project directory; for "user" boards, from the user
+      //-- boards folder root (shared by all the boards defined there). For
+      //-- any other board (distribution) the copies are REMOVED so a stale
+      //-- jsonc from a previous build cannot shadow apio's own definitions.
+      function syncCustomBoardConfigs(board) {
+        var origin = board && board.origin;
+        var custom = origin === 'project' || origin === 'user';
+        var dir = '';
+        if (origin === 'user') {
+          dir = boards.getUserBoardsDir();
+        } else if (origin === 'project') {
+          dir =
+            project.dirname ||
+            (project.filepath ? utils.dirname(project.filepath) : '');
         }
         var files = ['boards.jsonc', 'fpgas.jsonc', 'programmers.jsonc'];
         files.forEach(function (f) {
-          var src = nodePath.join(dir, f);
-          try {
-            if (nodeFs.statSync(src).isFile()) {
-              nodeFse.copySync(src, nodePath.join(common.BUILD_DIR, f));
+          var dst = nodePath.join(common.BUILD_DIR, f);
+          var srcIsFile = false;
+          if (custom && dir) {
+            try {
+              srcIsFile = nodeFs.statSync(nodePath.join(dir, f)).isFile();
+            } catch (e) {
+              //-- Source file not present: fall through to cleanup
             }
-          } catch (e) {
-            //-- File not present in the project: ignore
+          }
+          if (srcIsFile) {
+            nodeFse.copySync(nodePath.join(dir, f), dst);
+          } else {
+            //-- No source for this board: drop any stale copy
+            try {
+              nodeFs.unlinkSync(dst);
+            } catch (e) {
+              //-- Not present in the build dir: nothing to clean
+            }
           }
         });
       }
@@ -1003,6 +1022,10 @@ angular
           //-- e.g. a custom FTDI upload: "{APIO_CMD} raw -- openFPGALoader ...".
           APIO_CMD: common.APIO_CMD || '',
           PROJECT_DIR: projectDir,
+          //-- Folder holding the selected board's definition files. Lets a
+          //-- board's custom commands reference files shipped next to it
+          //-- (works for distribution, user and project boards alike).
+          BOARD_DIR: board.path || '',
           BOARD: board.apioBoard || board.name,
           FPGA: (board.info && board.info.fpga) || '',
           USB_VID: usb.vid || '',

@@ -21,6 +21,7 @@ angular.module('icestudio').controller(
     profile,
     project,
     collections,
+    boards,
     graph,
     tools,
     utils,
@@ -1269,6 +1270,195 @@ angular.module('icestudio').controller(
         }
       });
     };
+
+    //---------------------------------------------------------------------
+    //-- Display a form asking the user to choose the custom (user) boards
+    //-- directory (profile 'externalBoards'). The directory must exist (it
+    //-- is created if it does not). Boards placed inside it are scanned on
+    //-- every board-list rebuild. An optional onDone callback is invoked
+    //-- once a valid directory has been set.
+    //---------------------------------------------------------------------
+    $scope.setExternalBoards = function (onDone) {
+      //-- Current path (empty means "use the default folder")
+      let current = profile.get('externalBoards') || '';
+
+      //-- Propose the default (Documents/Icestudio/boards) when not set yet
+      let prefill = current || common.DEFAULT_EXTERNAL_BOARDS_DIR;
+
+      //-- Create the form
+      let form = new forms.FormExternalBoards(prefill);
+
+      //-- Display the form
+      form.display((evt) => {
+        //-- The callback is executed when the user has pressed the OK button
+        form.process(evt);
+
+        //-- Read the chosen path
+        let newPath = (form.values[0] || '').trim();
+
+        //-- Mandatory: a directory must be provided
+        if (newPath === '') {
+          evt.cancel = true;
+          alertify.error(
+            gettextCatalog.getString(
+              'Please select a directory for the custom boards'
+            )
+          );
+          return;
+        }
+
+        //-- Ensure the directory exists (create it, e.g. the proposed default)
+        try {
+          if (!fs.existsSync(newPath)) {
+            fs.mkdirSync(newPath, { recursive: true });
+          }
+        } catch (e) {
+          // Reported by the validity check below
+        }
+
+        //-- It must be an existing directory
+        let isDir = false;
+        try {
+          isDir = fs.existsSync(newPath) && fs.statSync(newPath).isDirectory();
+        } catch (e) {
+          isDir = false;
+        }
+
+        if (!isDir) {
+          evt.cancel = true;
+          alertify.error(
+            gettextCatalog.getString('Path {{path}} is not a valid directory', {
+              path: newPath,
+            })
+          );
+          return;
+        }
+
+        //-- Persist + re-scan only when it actually changed
+        if (newPath !== current) {
+          profile.set('externalBoards', newPath);
+
+          //-- Rebuild the board list from the new folder (keep the active
+          //-- project's boards included, as the footer selector does)
+          let projectDir =
+            project.dirname ||
+            (project.filepath ? utils.dirname(project.filepath) : '') ||
+            (project.path ? utils.dirname(project.path) : '');
+          boards.loadBoards(projectDir || undefined);
+
+          //-- Re-bind the selected board to its record in the fresh scan
+          //-- (same name). If it is gone from the new folder we keep the
+          //-- previous (orphan) record on purpose: the open design still
+          //-- targets it, and switching boards is the user's call.
+          if (
+            common.selectedBoard &&
+            common.boards.some(function (b) {
+              return b.name === common.selectedBoard.name;
+            })
+          ) {
+            boards.selectBoard(common.selectedBoard.name);
+          }
+          utils.rootScopeSafeApply();
+
+          //-- Notify the user
+          alertify.success(gettextCatalog.getString('Custom boards updated'));
+        }
+
+        //-- Continue any pending action (e.g. the new-feature announcement)
+        if (typeof onDone === 'function') {
+          onDone();
+        }
+      });
+    };
+
+    //---------------------------------------------------------------------
+    //-- New-feature announcements: features added AFTER the user's profile
+    //-- was created (so the Setup Wizard will not run again) are announced
+    //-- once at startup, offering to configure them right away.
+    //--
+    //-- Each entry is keyed by the profile key that stores its setting: the
+    //-- announcement shows while that key is ABSENT from the ON-DISK profile
+    //-- (profile.data always carries every key with its default, so absence
+    //-- in the file is what marks a never-presented feature). Configuring or
+    //-- dismissing writes the key, so it is announced at most once. To
+    //-- announce a future feature, add an entry to this list.
+    //---------------------------------------------------------------------
+    var FEATURE_ANNOUNCEMENTS = [
+      {
+        profileKey: 'externalBoards',
+        announce: function (markSeen) {
+          alertify.set('confirm', 'labels', {
+            ok: gettextCatalog.getString('Configure now'),
+            cancel: gettextCatalog.getString('Later'),
+          });
+          alertify.confirm(
+            utils.bold(gettextCatalog.getString('New feature: custom boards')) +
+              '<br>' +
+              gettextCatalog.getString(
+                'This version adds a custom boards folder: any board you place or create inside it (same format as the distribution boards) is always available in every board list, without copying it into each project.'
+              ) +
+              '<br>' +
+              gettextCatalog.getString(
+                'You can change the folder at any time in Edit > Preferences > Custom boards.'
+              ),
+            function () {
+              restoreConfirmLabels();
+              //-- Deferred on purpose: alertify.confirm is a SINGLETON. The
+              //-- configure form (forms Form.display → alertify.confirm)
+              //-- reuses this very dialog instance, which is still open
+              //-- inside this ok-callback: a synchronous open hits the
+              //-- "already open" branch (no onshow, field not initialized)
+              //-- and then gets closed when this callback returns. Deferring
+              //-- lets the announcement close first, so the form opens clean.
+              setTimeout(function () {
+                $scope.setExternalBoards(markSeen);
+              }, 0);
+            },
+            function () {
+              restoreConfirmLabels();
+              markSeen();
+            }
+          );
+        },
+      },
+    ];
+
+    function restoreConfirmLabels() {
+      alertify.set('confirm', 'labels', {
+        ok: gettextCatalog.getString('OK'),
+        cancel: gettextCatalog.getString('Cancel'),
+      });
+    }
+
+    function announceNewFeatures() {
+      //-- Read the RAW on-disk profile: key absence there (not in
+      //-- profile.data, which always has defaults) marks an unseen feature
+      var raw = null;
+      try {
+        raw = JSON.parse(fs.readFileSync(common.PROFILE_PATH, 'utf8'));
+      } catch (e) {
+        return; //-- No readable profile: nothing to announce
+      }
+      if (!raw || typeof raw !== 'object') {
+        return;
+      }
+      for (var i = 0; i < FEATURE_ANNOUNCEMENTS.length; i++) {
+        var entry = FEATURE_ANNOUNCEMENTS[i];
+        if (!(entry.profileKey in raw)) {
+          //-- Writing the key (its current value, i.e. the default unless
+          //-- the configure dialog changed it) is what marks it as seen
+          var markSeen = (function (key) {
+            return function () {
+              profile.set(key, profile.get(key));
+            };
+          })(entry.profileKey);
+          entry.announce(markSeen);
+          return; //-- At most one announcement per launch
+        }
+      }
+    }
+
+    $(document).on('icestudio:announceNewFeatures', announceNewFeatures);
 
     $(document).on('infoChanged', function (evt, newValues) {
       var values = getProjectInformation();

@@ -2833,3 +2833,55 @@ msgstr "Import constraints"
 
 msgid "Import a constraint file (PCF/LPF/CST/XDC) into the pinout"
 msgstr "Import a constraint file (PCF/LPF/CST/XDC) into the pinout"
+
+msgid "New board (will be saved into the user boards folder)"
+msgstr "New board (will be saved into the user boards folder)"
+
+msgid "Delete user board \"{id}\"? This removes its folder."
+msgstr "Delete user board \"{id}\"? This removes its folder."
+
+msgid "User board"
+msgstr "User board"
+
+msgid "Custom boards"
+msgstr "Custom boards"
+
+msgid "Custom boards updated"
+msgstr "Custom boards updated"
+
+msgid "Please select a directory for the custom boards"
+msgstr "Please select a directory for the custom boards"
+
+msgid "Configure now"
+msgstr "Configure now"
+
+msgid "Later"
+msgstr "Later"
+
+msgid "New feature: custom boards"
+msgstr "New feature: custom boards"
+
+msgid ""
+"This version adds a custom boards folder: any board you place or create "
+"inside it (same format as the distribution boards) is always available in "
+"every board list, without copying it into each project."
+msgstr ""
+"This version adds a custom boards folder: any board you place or create "
+"inside it (same format as the distribution boards) is always available in "
+"every board list, without copying it into each project."
+
+msgid "You can change the folder at any time in Edit > Preferences > Custom boards."
+msgstr ""
+"You can change the folder at any time in Edit > Preferences > Custom "
+"boards."
+
+msgid ""
+"Select a directory for your custom boards. Icestudio will always scan this "
+"folder and offer any board you place or create inside it (same format as "
+"the distribution boards) in every board list, without copying it into each "
+"project. This folder is required and must exist."
+msgstr ""
+"Select a directory for your custom boards. Icestudio will always scan this "
+"folder and offer any board you place or create inside it (same format as "
+"the distribution boards) in every board list, without copying it into each "
+"project. This folder is required and must exist."

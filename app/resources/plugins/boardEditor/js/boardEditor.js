@@ -80,20 +80,31 @@ function projectDir() {
   return '';
 }
 
+function userBoardsDir() {
+  //-- User boards folder (profile 'externalBoards' or its default,
+  //-- <Documents>/Icestudio/boards), resolved by the boards service
+  return services().boards.getUserBoardsDir();
+}
+
 function targetDir(board, isNew) {
   //-- Existing distribution board edited in developer mode → in place
   if (!isNew && board && board.origin === 'distribution') {
     return nodePath.join(boardsResourceDir(), board.name);
+  }
+  //-- Existing user board → in place, inside the user boards folder
+  if (!isNew && board && board.origin === 'user') {
+    return nodePath.join(userBoardsDir(), board.name);
   }
   //-- New board created while developer mode is on → save into the
   //-- distribution boards folder (it is also registered in menu.json on save)
   if (isNew && devModeOn()) {
     return nodePath.join(boardsResourceDir(), board.name);
   }
-  //-- Otherwise → project boards folder
+  //-- Otherwise → project boards folder, or the user boards folder when
+  //-- there is no saved project to host one
   var dir = projectDir();
   if (!dir) {
-    return '';
+    return nodePath.join(userBoardsDir(), board.name);
   }
   return nodePath.join(dir, 'boards', board.name);
 }
@@ -684,7 +695,11 @@ function renderList(filter) {
     var badge = el(
       'span',
       { class: 'be-badge be-' + board.origin },
-      board.origin === 'project' ? 'project' : 'dist'
+      board.origin === 'project'
+        ? 'project'
+        : board.origin === 'user'
+          ? 'user'
+          : 'dist'
     );
     row.appendChild(badge);
     if (board.readOnly) {
@@ -762,7 +777,9 @@ function loadForm(board) {
       ? gettextCatalog.getString(
           'Distribution board (read-only unless developer mode)'
         )
-      : gettextCatalog.getString('Project board'),
+      : board.origin === 'user'
+        ? gettextCatalog.getString('User board')
+        : gettextCatalog.getString('Project board'),
     board.origin === 'distribution' ? 'warn' : 'ok'
   );
 }
@@ -1003,7 +1020,7 @@ function isEditable() {
   if (!beCurrent) {
     return true;
   }
-  if (beCurrent.origin === 'project') {
+  if (beCurrent.origin === 'project' || beCurrent.origin === 'user') {
     return true;
   }
   //-- distribution board: editable only in developer mode
@@ -1024,7 +1041,7 @@ function applyReadOnlyState() {
   $id('be-save').disabled = !editable;
   $id('be-delete').disabled = !(
     beCurrent &&
-    beCurrent.origin === 'project' &&
+    (beCurrent.origin === 'project' || beCurrent.origin === 'user') &&
     !beIsNew
   );
 }
@@ -1032,11 +1049,13 @@ function applyReadOnlyState() {
 // ─── Actions ─────────────────────────────────────────────────────────────────
 function newBoard() {
   beIsNew = true;
+  //-- Without a saved project the new board goes to the user boards folder
+  var toUser = !projectDir();
   beCurrent = {
     name: '',
-    origin: 'project',
+    origin: toUser ? 'user' : 'project',
     mode: 'apio',
-    info: { label: '', mode: 'apio', group: 'PROJECT' },
+    info: { label: '', mode: 'apio', group: toUser ? 'USER' : 'PROJECT' },
     pinout: [],
     rules: { input: [], output: [] },
   };
@@ -1060,10 +1079,17 @@ function updateNewBoardStatus() {
       ),
       'warn'
     );
-  } else {
+  } else if (projectDir()) {
     setStatus(
       gettextCatalog.getString(
         'New board (will be saved into the project boards folder)'
+      ),
+      'ok'
+    );
+  } else {
+    setStatus(
+      gettextCatalog.getString(
+        'New board (will be saved into the user boards folder)'
       ),
       'ok'
     );
@@ -1073,13 +1099,15 @@ function updateNewBoardStatus() {
 function cloneBoard() {
   var src = collectForm();
   beIsNew = true;
-  beCurrent = { name: '', origin: 'project', mode: src.info.mode };
+  //-- Same target rule as newBoard: user folder when no saved project
+  var cloneOrigin = projectDir() ? 'project' : 'user';
+  beCurrent = { name: '', origin: cloneOrigin, mode: src.info.mode };
   src.name = '';
   src.info.label = (src.info.label || '') + ' (copy)';
   //-- reuse the collected data by re-rendering from a synthetic board
   loadForm({
     name: '',
-    origin: 'project',
+    origin: cloneOrigin,
     mode: src.info.mode,
     apioBoard: $id('f-apio').value,
     info: src.info,
@@ -1097,7 +1125,9 @@ function cloneBoard() {
 function validBoardName(name) {
   //-- Parentheses are allowed: many shipped board ids use them to tag the
   //-- programmer, e.g. "ColorLight-i5-v7.0_(FT2232H)".
-  return /^[A-Za-z0-9._()-]+$/.test(name);
+  //-- Dot-only names ('.', '..') are rejected: they would escape the boards
+  //-- folder when joined into a save/delete path.
+  return /^[A-Za-z0-9._()-]+$/.test(name) && !/^\.+$/.test(name);
 }
 
 function saveBoard() {
@@ -1189,21 +1219,50 @@ function saveBoard() {
       : gettextCatalog.getString('Board "{id}" saved')
     ).replace('{id}', data.name)
   );
+  //-- Keep the editing buffer coherent with what was just written. It
+  //-- matters when refreshHost cannot re-select the board from the fresh
+  //-- scan (e.g. a distribution save whose family is not in menu.json):
+  //-- without this, a new board would keep name '' (making Delete point at
+  //-- the WHOLE boards folder) and a devmode save would keep a non-dist
+  //-- origin (forking the next save into another folder).
+  if (beIsNew) {
+    beCurrent.name = data.name;
+    beCurrent.origin = toDistribution
+      ? 'distribution'
+      : projectDir()
+        ? 'project'
+        : 'user';
+  }
   beIsNew = false;
   refreshHost(data.name);
 }
 
 function deleteBoard() {
-  if (!beCurrent || beCurrent.origin !== 'project' || beIsNew) {
+  //-- The name guard is load-bearing: an empty or dot-only name joined into
+  //-- the delete path would target the boards folder itself (rmrf).
+  if (
+    !beCurrent ||
+    (beCurrent.origin !== 'project' && beCurrent.origin !== 'user') ||
+    beIsNew ||
+    !validBoardName(beCurrent.name)
+  ) {
     return;
   }
   var name = beCurrent.name;
+  var isUser = beCurrent.origin === 'user';
+  var msg = isUser
+    ? gettextCatalog.getString(
+        'Delete user board "{id}"? This removes its folder.'
+      )
+    : gettextCatalog.getString(
+        'Delete project board "{id}"? This removes its folder.'
+      );
   alertify.confirm(
-    gettextCatalog
-      .getString('Delete project board "{id}"? This removes its folder.')
-      .replace('{id}', name),
+    msg.replace('{id}', name),
     function () {
-      var dir = nodePath.join(projectDir(), 'boards', name);
+      var dir = isUser
+        ? nodePath.join(userBoardsDir(), name)
+        : nodePath.join(projectDir(), 'boards', name);
       try {
         rmrf(dir);
       } catch (e) {
