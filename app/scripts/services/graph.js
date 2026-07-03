@@ -650,6 +650,11 @@ angular.module('icestudio').service(
             disableSelected();
 
             __updateWiresOnObstacles();
+            // Close the batch opened in addDraggableCell/addDraggableCells
+            // (its only unmatched batch:start), so the add is stored as one
+            // undo step and stackChanged marks the project as changed now
+            // instead of on the next unrelated batch:stop.
+            graph.trigger('batch:stop');
           } else {
             // Toggle selected cell
             if (utils.hasShift(evt)) {
