@@ -1539,12 +1539,6 @@ angular.module('icestudio').service(
       });
       graph.trigger('batch:start');
       addCell(cell);
-      //-- addCell() uses graph.addCell (singular), which — unlike the
-      //-- graph.addCells() that basic blocks use — does NOT emit an internal
-      //-- batch:stop. Without it the batch opened above never commits, so the
-      //-- add goes unrecorded and the project is not marked as changed (no
-      //-- asterisk / no save prompt when adding a module block). Close it here.
-      graph.trigger('batch:stop');
       disableSelected();
       let opt = { transparent: true, initooltip: false };
       selection.add(cell);
