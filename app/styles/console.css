@@ -140,10 +140,10 @@
 /* Resize handle – thin draggable bar at the top of the console */
 .output-console--resize-handle {
   position: absolute;
-  top: -5px;               /* overlap the top border slightly */
+  top: -5px; /* overlap the top border slightly */
   left: 0;
   right: 0;
-  height: 10px;            /* large enough to grab comfortably */
+  height: 10px; /* large enough to grab comfortably */
   cursor: ns-resize;
   background: transparent;
   z-index: 10;
