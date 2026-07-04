@@ -119,8 +119,54 @@ function ihubOnRetrievedAll(payload) {
       ihubHubInstalled[r.id] = true;
     }
   });
+  ihubStampInstalledMarkers(payload.results || []);
   ihubRenderList();
   ihubRenderDetail();
+}
+
+//-- Ensure every CATALOG-installed collection carries the on-disk marker (an
+//-- "icehub" block in its package.json). Collections installed by older
+//-- iceHub versions predate the marker; the host app uses it to tell
+//-- hub-installed (read-only) collections apart from hand-made ones, so
+//-- their examples open from a temp copy instead of in place.
+//-- Hardening: records whose folder no longer exists are PURGED from the
+//-- 'installed' store (a hand-deleted collection must not stamp a future
+//-- hand-made one with the same folder name), and records explicitly added
+//-- outside the catalog (fromCatalog === false, the hub's Add flow for the
+//-- user's own zips) are never stamped.
+function ihubStampInstalledMarkers(records) {
+  let extDir = ihubExternalDir();
+  if (!extDir) {
+    return;
+  }
+  let fs = require('fs');
+  let path = require('path');
+  records.forEach(function (rec) {
+    if (!rec || !rec.id) {
+      return;
+    }
+    let collDir = path.join(extDir, rec.id);
+    if (!fs.existsSync(collDir)) {
+      //-- Folder gone (deleted by hand): drop the stale record
+      ihubDbDeleteInstalled(rec.id);
+      delete ihubHubInstalled[rec.id];
+      return;
+    }
+    if (rec.fromCatalog === false) {
+      //-- User's own collection added via the hub's Add flow: editable
+      return;
+    }
+    try {
+      let pkgPath = path.join(collDir, 'package.json');
+      let pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+      if (!pkg.icehub) {
+        pkg.icehub = { id: rec.id, installedAt: Date.now() };
+        fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
+      }
+    } catch (e) {
+      //-- package.json missing/unreadable: skip
+    }
+  });
 }
 
 //-- Mark a collection as busy (disables its footer button) and refresh detail
@@ -1195,12 +1241,20 @@ function ihubShowAddDialog() {
 }
 
 //-- Open a project file in a new Icestudio window (same mechanism as
-//-- utils.newWindow: index.html?icestudio_argv=<base64 {filepath}>)
-function ihubOpenInNewWindow(filepath) {
+//-- utils.newWindow: index.html?icestudio_argv=<base64 {filepath}>).
+//-- opts.emptyPath opens with an empty project path (Save asks for a
+//-- destination): used for volatile example copies in the OS temp folder.
+function ihubOpenInNewWindow(filepath, opts) {
   try {
-    let params = JSON.stringify({ filepath: filepath });
+    let paramsObj = { filepath: filepath };
+    if (opts && opts.emptyPath) {
+      paramsObj.emptyPath = true;
+    }
+    let params = JSON.stringify(paramsObj);
     let b64 = Buffer.from(params).toString('base64');
-    nw.Window.open('index.html?icestudio_argv=' + b64);
+    //-- percent-encoded: the receiver decodes with URL.searchParams and a
+    //-- raw '+' of the base64 alphabet would arrive as a space
+    nw.Window.open('index.html?icestudio_argv=' + encodeURIComponent(b64));
   } catch (e) {
     ihubNotify(
       gettextCatalog.getString('Could not open a new window: {{error}}', {
@@ -1226,11 +1280,27 @@ function ihubSetSkipOpenExampleInfo(v) {
   }
 }
 
-//-- Open an example. First explain (unless silenced) that a copy will be saved
-//-- to a folder of the user's choice so it can be edited; then pick the folder,
-//-- copy and open in a new window. The original example is never modified.
+//-- Open an example. The example is copied silently to the OS temp folder
+//-- and opened in a new window with an empty project path (Save asks for a
+//-- destination), so the original is never modified and the user is not
+//-- asked anything. Only when no writable temp folder exists we fall back
+//-- to the previous flow: explain (unless silenced), pick a folder, copy.
 function ihubOpenExample(srcPath) {
   if (!srcPath) {
+    return;
+  }
+  let tmpIce = '';
+  try {
+    tmpIce = angular
+      .element(document.body)
+      .injector()
+      .get('utils')
+      .copyExampleToTmp(srcPath);
+  } catch (e) {
+    tmpIce = '';
+  }
+  if (tmpIce) {
+    ihubOpenInNewWindow(tmpIce, { emptyPath: true });
     return;
   }
   if (ihubSkipOpenExampleInfo()) {

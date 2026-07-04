@@ -62,6 +62,25 @@ angular
       //-- build dir is used
       nodeFse.removeSync(common.OLD_BUILD_DIR);
 
+      //-- Best-effort sweep of old example copies (opened >7 days ago) in
+      //-- the OS temp folder. Never wipe the whole folder: other windows
+      //-- may have younger copies open right now.
+      try {
+        let sweepLimit = Date.now() - 7 * 24 * 60 * 60 * 1000;
+        nodeFs.readdirSync(common.EXAMPLES_TMP_DIR).forEach(function (entry) {
+          let entryPath = nodePath.join(common.EXAMPLES_TMP_DIR, entry);
+          try {
+            if (nodeFs.statSync(entryPath).mtimeMs < sweepLimit) {
+              nodeFse.removeSync(entryPath);
+            }
+          } catch (e) {
+            //-- Entry vanished or busy: skip it
+          }
+        });
+      } catch (e) {
+        //-- No examples temp folder yet: nothing to sweep
+      }
+
       //-- Execute the apio verify command. It checks the syntax of the current
       //-- circuit
       this.verifyCode = function (startMessage, endMessage) {

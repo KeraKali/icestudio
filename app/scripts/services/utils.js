@@ -957,6 +957,81 @@ angular
         return ret;
       };
 
+      //-- Resolve (and create) the temp folder used to open read-only
+      //-- examples without asking for a destination. Probes writability with
+      //-- a real write. Returns '' when the OS temp dir is not usable, so
+      //-- callers can fall back to asking the user for a folder.
+      this.getExamplesTmpDir = function () {
+        try {
+          if (!nodeFs.existsSync(common.EXAMPLES_TMP_DIR)) {
+            nodeFs.mkdirSync(common.EXAMPLES_TMP_DIR, { recursive: true });
+          }
+          var probe = nodePath.join(
+            common.EXAMPLES_TMP_DIR,
+            '.write-test-' + Date.now()
+          );
+          nodeFs.writeFileSync(probe, '');
+          nodeFs.unlinkSync(probe);
+          return common.EXAMPLES_TMP_DIR;
+        } catch (e) {
+          return '';
+        }
+      };
+
+      //-- True when a folder contains any .ice design (recursively). Used to
+      //-- tell asset subfolders (boards/, data/...) apart from sibling
+      //-- example sub-categories, which must NOT be copied along.
+      function dirContainsIce(dir) {
+        var entries = nodeFs.readdirSync(dir);
+        for (var i = 0; i < entries.length; i++) {
+          var entryPath = nodePath.join(dir, entries[i]);
+          var st = nodeFs.statSync(entryPath);
+          if (st.isFile()) {
+            if (nodePath.extname(entries[i]).toLowerCase() === '.ice') {
+              return true;
+            }
+          } else if (st.isDirectory() && dirContainsIce(entryPath)) {
+            return true;
+          }
+        }
+        return false;
+      }
+
+      //-- Copy an example .ice into its own unique folder under the examples
+      //-- temp dir, together with its sibling assets: every regular non-.ice
+      //-- file (.list/.v/... referenced by relative path) and every sibling
+      //-- subfolder holding no .ice designs (boards/, data/... — subfolders
+      //-- WITH .ice are other examples and are left behind). Returns the path
+      //-- of the copied .ice, or '' when the temp dir is not writable
+      //-- (caller falls back to asking the user for a folder).
+      this.copyExampleToTmp = function (srcIce) {
+        var tmpRoot = this.getExamplesTmpDir();
+        if (!tmpRoot) {
+          return '';
+        }
+        try {
+          var name = nodePath.basename(srcIce, '.ice');
+          var destDir = nodeFs.mkdtempSync(nodePath.join(tmpRoot, name + '-'));
+          var srcDir = nodePath.dirname(srcIce);
+          var destIce = nodePath.join(destDir, nodePath.basename(srcIce));
+          nodeFse.copySync(srcIce, destIce);
+          nodeFs.readdirSync(srcDir).forEach(function (entry) {
+            var entryPath = nodePath.join(srcDir, entry);
+            var st = nodeFs.statSync(entryPath);
+            if (st.isFile()) {
+              if (nodePath.extname(entry).toLowerCase() !== '.ice') {
+                nodeFse.copySync(entryPath, nodePath.join(destDir, entry));
+              }
+            } else if (st.isDirectory() && !dirContainsIce(entryPath)) {
+              nodeFse.copySync(entryPath, nodePath.join(destDir, entry));
+            }
+          });
+          return destIce;
+        } catch (e) {
+          return '';
+        }
+      };
+
       this.findIncludedFiles = function (code) {
         var ret = [];
         var patterns = [
@@ -1286,7 +1361,7 @@ angular
       //--  INPUTS:
       //--    * filepath: (optional) Icestudio file to open in the new window
       //-----------------------------------------------------------------------
-      this.newWindow = function (filepath) {
+      this.newWindow = function (filepath, opts) {
         //-- If there are parameters to pass or not
         //-- No parameters by default
         let hasParams = false;
@@ -1307,14 +1382,24 @@ angular
             filepath: filepath,
           };
 
+          //-- Open with an empty project path (Save behaves as Save as):
+          //-- used for volatile example copies in the OS temp folder
+          if (opts && opts.emptyPath) {
+            params.emptyPath = true;
+          }
+
           //-- Convert the params to json
           let jsonParams = JSON.stringify(params);
 
           //-- Encode the params into Base64 format
           let paramsBase64 = Buffer.from(jsonParams).toString('base64');
 
-          //-- Create the URL query with the icestudio_argv param
-          let icestudioArgv = '?icestudio_argv=' + paramsBase64;
+          //-- Create the URL query with the icestudio_argv param.
+          //-- percent-encoded: the receiver reads it with URL.searchParams,
+          //-- which decodes x-www-form-urlencoded — a raw '+' of the base64
+          //-- alphabet would arrive as a space and corrupt the payload.
+          let icestudioArgv =
+            '?icestudio_argv=' + encodeURIComponent(paramsBase64);
 
           //-- Create the final URL, with parameters
           url += icestudioArgv;

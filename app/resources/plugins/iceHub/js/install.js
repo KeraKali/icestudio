@@ -392,12 +392,31 @@ function ihubInstallCore(item, onPhase) {
         fse.cpSync(root, dest, { recursive: true });
       }
 
+      //-- Stamp the hub marker into the installed collection's package.json
+      //-- so the host app can tell hub-installed (read-only) collections
+      //-- apart from hand-made ones living in the same external folder.
+      try {
+        let pkgPath = path.join(dest, 'package.json');
+        let pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+        pkg.icehub = {
+          id: item.id,
+          version: src.version,
+          installedAt: stamp,
+        };
+        fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
+      } catch (e) {
+        //-- Best-effort: an unreadable package.json is not fatal here
+      }
+
       ihubDbStoreInstalled({
         id: item.id,
         name: item.name,
         version: src.version,
         source: item.source,
         installedAt: stamp,
+        //-- Catalog install: the on-disk 'icehub' marker applies (read-only
+        //-- collection; its examples open from a temp copy)
+        fromCatalog: true,
       });
 
       cleanup();
@@ -929,6 +948,9 @@ function ihubAddCollection(opts) {
           version: version,
           source: source,
           installedAt: stamp,
+          //-- Added by hand (local zip/URL, outside the catalog): the user's
+          //-- own collection stays editable — never stamp the icehub marker
+          fromCatalog: false,
         });
         cleanup();
         ihubUpdateOverlay(gettextCatalog.getString('Reindexing…'));

@@ -204,6 +204,14 @@ angular.module('icestudio').service(
     this.IMAGE_CACHE_DIR = nodePath.join(this.CACHE_DIR, 'images');
     this.OLD_BUILD_DIR = nodePath.join(this.ICESTUDIO_DIR, '.build');
 
+    //-- Folder inside the OS temp dir where read-only examples (distribution
+    //-- and hub-installed collections) are copied so they can be opened,
+    //-- edited and built without asking the user for a destination first.
+    this.EXAMPLES_TMP_DIR = nodePath.join(
+      require('os').tmpdir(),
+      'icestudio_tmp'
+    );
+
     //-- Get the Icestudio Version
     this.ICESTUDIO_VERSION = _package.version;
 
