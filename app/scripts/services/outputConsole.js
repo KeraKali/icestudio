@@ -357,4 +357,115 @@ angular.module('icestudio').service('outputConsole', function (gettextCatalog) {
       });
     });
   }
+  
+  
+
+    var consoleEl = null;
+    var handle = null;
+    var maxBtn = null;
+    var isResizing = false;
+    var startY, startHeight;
+
+    function initResize() {
+      consoleEl = document.getElementById('output-console');
+      handle = document.getElementById('output-console-resize-handle');
+      maxBtn = document.getElementById('output-console-maximize');
+      if (!consoleEl || !handle || !maxBtn) return false;
+
+      // Remove old listeners to avoid duplicates (in case of re‑init)
+      handle.removeEventListener('mousedown', startResize);
+      document.removeEventListener('mousemove', doResize);
+      document.removeEventListener('mouseup', stopResize);
+      maxBtn.removeEventListener('click', onMaximize);
+
+      // Attach drag events
+      handle.addEventListener('mousedown', startResize);
+      document.addEventListener('mousemove', doResize);
+      document.addEventListener('mouseup', stopResize);
+
+      // Attach maximise button handler
+      maxBtn.addEventListener('click', onMaximize);
+
+      // Restore saved height if not maximised
+      if (!consoleEl.classList.contains('maximized')) {
+        var saved = localStorage.getItem('consoleHeight');
+        if (saved) {
+          consoleEl.style.height = saved + 'px';
+          consoleEl.style.top = '';
+        }
+      } else {
+        // If maximised, ensure no inline height is set
+        consoleEl.style.height = '';
+        consoleEl.style.top = '';
+      }
+
+      return true;
+    }
+
+    function startResize(e) {
+      if (consoleEl.classList.contains('maximized')) return;
+      isResizing = true;
+      startY = e.clientY;
+      startHeight = parseInt(window.getComputedStyle(consoleEl).height, 10);
+      document.body.style.cursor = 'ns-resize';
+      e.preventDefault();
+    }
+
+    function doResize(e) {
+      if (!isResizing) return;
+      var deltaY = e.clientY - startY;
+      var newHeight = startHeight - deltaY;
+      var minHeight = 50;
+      var maxHeight = window.innerHeight - 100;
+      if (newHeight < minHeight) newHeight = minHeight;
+      if (newHeight > maxHeight) newHeight = maxHeight;
+      consoleEl.style.height = newHeight + 'px';
+      consoleEl.style.top = '';
+      consoleEl.classList.remove('maximized');
+    }
+
+    function stopResize() {
+      if (isResizing) {
+        isResizing = false;
+        document.body.style.cursor = '';
+        // Save current height (if not maximised)
+        if (consoleEl && !consoleEl.classList.contains('maximized')) {
+          var currentHeight = parseInt(window.getComputedStyle(consoleEl).height, 10);
+          if (currentHeight) {
+            localStorage.setItem('consoleHeight', currentHeight);
+          }
+        }
+      }
+    }
+
+    function onMaximize() {
+      // Run after Angular's click handler (so the class is already toggled)
+      setTimeout(function() {
+        if (consoleEl.classList.contains('maximized')) {
+          // Maximised: remove inline height so CSS `height: auto` takes over
+          consoleEl.style.height = '';
+          consoleEl.style.top = '';
+        } else {
+          // Un‑maximised: restore the saved height (if any)
+          var saved = localStorage.getItem('consoleHeight');
+          if (saved) {
+            consoleEl.style.height = saved + 'px';
+            consoleEl.style.top = '';
+          } else {
+            // No saved height: let CSS handle it (default 33vh)
+            consoleEl.style.height = '';
+            consoleEl.style.top = '';
+          }
+        }
+      }, 0);
+    }
+
+    // Poll every 200ms until the console elements are available
+    var interval = setInterval(function() {
+      if (initResize()) {
+        clearInterval(interval);
+        console.log('Console resize handler attached');
+      }
+    }, 200);
+
 });
