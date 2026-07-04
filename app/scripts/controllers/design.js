@@ -444,6 +444,87 @@ angular
         return disabled;
       }
 
+      //-- JSON.stringify with object keys sorted recursively. The stored
+      //-- dependency and the re-serialized graph build their objects with
+      //-- different key insertion order (files written by other versions vs
+      //-- cellsToProject), and plain stringify is key-order sensitive, so a
+      //-- structural comparison needs a stable form.
+      //-- Faithful to JSON semantics: keys holding undefined are SKIPPED
+      //-- (utils.clone/fast-copy preserves them, while a graph parsed from a
+      //-- .ice file never has them — printing them would fabricate a
+      //-- difference), and undefined array items serialize as null.
+      function stableStringify(v) {
+        if (Array.isArray(v)) {
+          return (
+            '[' +
+            v
+              .map(function (x) {
+                return x === undefined ? 'null' : stableStringify(x);
+              })
+              .join(',') +
+            ']'
+          );
+        }
+        if (v && typeof v === 'object') {
+          return (
+            '{' +
+            Object.keys(v)
+              .filter(function (k) {
+                return v[k] !== undefined;
+              })
+              .sort()
+              .map(function (k) {
+                return JSON.stringify(k) + ':' + stableStringify(v[k]);
+              })
+              .join(',') +
+            '}'
+          );
+        }
+        return String(JSON.stringify(v));
+      }
+
+      //-- Canonical form of a design graph, used ONLY for the
+      //-- changed-comparison (the stored dependency keeps the serializer's
+      //-- I/O ordering). Two normalizations, both matching what loading a
+      //-- graph produces anyway:
+      //--   * order-insensitive: blocks sorted by id, wires by content (the
+      //--     serializer re-sorts cells, so array order is not a user edit);
+      //--   * derived port-default 'apply' flags recomputed from the wires:
+      //--     the runtime keeps apply === "no wire connected" (see
+      //--     updatePortDefault in graph.js, applied also to wires loaded
+      //--     from a .ice), so a file storing a stale value would otherwise
+      //--     differ from its own round-trip without any user edit.
+      function canonicalGraph(g) {
+        var c = utils.clone(g);
+        var connected = {};
+        if (c && c.wires) {
+          c.wires.forEach(function (w) {
+            if (w.target && w.target.block && w.target.port) {
+              connected[w.target.block + ':' + w.target.port] = true;
+            }
+          });
+          c.wires.sort(function (a, b) {
+            return stableStringify(a).localeCompare(stableStringify(b));
+          });
+        }
+        if (c && c.blocks) {
+          c.blocks.forEach(function (b) {
+            var ins = b.data && b.data.ports && b.data.ports.in;
+            if (ins) {
+              ins.forEach(function (port) {
+                if (port.default) {
+                  port.default.apply = !connected[b.id + ':' + port.name];
+                }
+              });
+            }
+          });
+          c.blocks.sort(function (a, b) {
+            return String(a.id).localeCompare(String(b.id));
+          });
+        }
+        return c;
+      }
+
       //-- Persist the current sub-design (the block being viewed) back into its
       //-- dependency in common.allDependencies, so edits survive navigating
       //-- away. Replaces the old "lock the padlock to save" step: now driven by
@@ -483,8 +564,14 @@ angular
         //-- differs from what is stored. Navigating into a module and back out
         //-- without editing must not prompt to save on close; keep the title
         //-- asterisk in sync with the change flag.
+        //-- The comparison must be ORDER-INSENSITIVE: the sort above re-orders
+        //-- the serialized cells (I/O ordering), so a dependency stored in any
+        //-- other block order would read as "changed" on the first navigation
+        //-- through the module even though nothing was edited. Positions and
+        //-- content are untouched by the sort, so any real edit still differs.
         var subdesignChanged =
-          JSON.stringify(tmp.design.graph) !== JSON.stringify(p.design.graph);
+          stableStringify(canonicalGraph(tmp.design.graph)) !==
+          stableStringify(canonicalGraph(p.design.graph));
         tmp.design.graph = p.design.graph;
         common.allDependencies[block.type] = tmp;
         if (subdesignChanged) {
