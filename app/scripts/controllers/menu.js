@@ -152,6 +152,10 @@ angular.module('icestudio').controller(
     //-- There is no .ice file by default
     let filepath = '';
 
+    //-- Open with an empty project path (volatile example copies: Save asks
+    //-- for a destination and the file is not recorded in recent projects)
+    let openEmptyPath = false;
+
     //-- Get the icestudio_argv param
     let icestudioArgv = myURL.searchParams.get('icestudio_argv');
 
@@ -168,6 +172,9 @@ angular.module('icestudio').controller(
 
       //-- Get the filepath
       filepath = params['filepath'];
+
+      //-- Volatile example copy flag (set by openExampleCopy / iceHub)
+      openEmptyPath = params['emptyPath'] === true;
     }
     //-- No argument through url
     //-- Check if there was an argument coming from the command line
@@ -190,11 +197,14 @@ angular.module('icestudio').controller(
       if (fs.existsSync(filepath)) {
         console.log('OPEN PROJECT', filepath);
 
-        //-- Open the file
-        project.open(filepath);
+        //-- Open the file (volatile example copies open with an empty
+        //-- project path, so Save asks for a destination)
+        project.open(filepath, openEmptyPath);
 
-        //-- Add recent project
-        addRecentProject(filepath);
+        //-- Add recent project (volatile temp copies are not recorded)
+        if (!openEmptyPath) {
+          addRecentProject(filepath);
+        }
       }
     }
 
@@ -255,8 +265,19 @@ angular.module('icestudio').controller(
     */
 
     utils.loadProfile(profile, function () {
-      $scope.recentProjects = $scope.profile.get('recentProjects');
+      //-- Nothing to snapshot here: the "Open recent" menu binds LIVE to the
+      //-- profile data (see $scope.recentProjects), so this window and every
+      //-- other one stay in sync through the profile file watcher.
     });
+
+    //-- LIVE list for the "Open recent" menu: always read from the profile
+    //-- data, which profile.startWatching keeps in sync across windows. The
+    //-- array reference only changes when the list really changes, so the
+    //-- ng-repeat stays digest-stable.
+    var NO_RECENTS = [];
+    $scope.recentProjects = function () {
+      return profile.get('recentProjects') || NO_RECENTS;
+    };
 
     //-------------------------------------------------------------------------
     //--  FUNCTIONS
@@ -381,7 +402,21 @@ angular.module('icestudio').controller(
     //-- Show a list of recent projects
     //-------------------------------------------------------------------------
 
-    function addRecentProject(filepath) {
+    function addRecentProject(filepath, _tries) {
+      //-- The profile may not be loaded yet (window bootstrapping with a
+      //-- file passed via icestudio_argv): recording now would read the
+      //-- default EMPTY list and clobber the stored one on save. Retry
+      //-- until the profile is initialized (bounded, best effort).
+      if (
+        (typeof iceStudio === 'undefined' || !iceStudio.isInitialized()) &&
+        (_tries || 0) < 40
+      ) {
+        setTimeout(function () {
+          addRecentProject(filepath, (_tries || 0) + 1);
+        }, 300);
+        return;
+      }
+
       const recentProjects = profile.get('recentProjects') || [];
 
       // Remove duplicate entries
@@ -395,7 +430,7 @@ angular.module('icestudio').controller(
 
       // Limit the list to the last 10 projects
       profile.set('recentProjects', updatedProjects.slice(0, 10));
-      $scope.recentProjects = updatedProjects.slice(0, 10);
+      utils.rootScopeSafeApply();
     }
 
     $scope.clearRecentProjects = function () {
@@ -405,8 +440,10 @@ angular.module('icestudio').controller(
           'Are you sure you want to clear the recent projects list?'
         ),
         function () {
+          //-- The menu binds live to the profile data: setting the key is
+          //-- enough (never assign $scope.recentProjects — it is a function)
           profile.set('recentProjects', []);
-          $scope.recentProjects = [];
+          utils.rootScopeSafeApply();
           alertify.success(gettextCatalog.getString('Recent projects cleared'));
         },
         function () {}
@@ -426,34 +463,94 @@ angular.module('icestudio').controller(
     //-- INPUTS:
     //--   * filepath (String): Icestudio file to open
     //--------------------------------------------------------------------------
-    $scope.openProject = function (filepath) {
-      // System examples (inside app bundle) must be copied before opening
-      if (filepath.startsWith(common.DEFAULT_COLLECTION_DIR)) {
-        alertify.confirm(
-          gettextCatalog.getString('Open example'),
-          gettextCatalog.getString(
-            'This is a system example. You need to select a destination folder where the design will be saved.'
-          ),
-          function () {
-            utils.directoryDialog(
-              '#input-choose-save-dir',
-              function (targetDir) {
-                var filename = path.basename(filepath);
-                var targetPath = path.join(targetDir, filename);
-                utils.copySync(filepath, targetPath);
-
-                if (zeroProject) {
-                  updateWorkingdir(targetPath);
-                  project.open(targetPath);
-                } else {
-                  utils.newWindow(targetPath);
-                }
-                addRecentProject(targetPath);
-              }
-            );
-          },
-          function () {}
+    //--------------------------------------------------------------------------
+    //-- True when a design lives inside a read-only example source: the
+    //-- distribution collection (app bundle, read-only on macOS), the
+    //-- internal collections folder, or an external collection INSTALLED
+    //-- FROM THE ICEHUB CATALOG (its package.json carries an "icehub"
+    //-- marker written by the hub installer). Hand-made or hand-cloned
+    //-- collections in the external folder have no marker and keep the
+    //-- edit-in-place behavior.
+    //--------------------------------------------------------------------------
+    function isReadOnlyExample(filepath) {
+      //-- Trailing separator: a sibling folder sharing the prefix (e.g.
+      //-- ~/.icestudio/collections-backup) must not match
+      if (
+        filepath.startsWith(common.DEFAULT_COLLECTION_DIR + path.sep) ||
+        filepath.startsWith(common.INTERNAL_COLLECTIONS_DIR + path.sep)
+      ) {
+        return true;
+      }
+      var external = profile.get('externalCollections') || '';
+      if (!external || !filepath.startsWith(external)) {
+        return false;
+      }
+      //-- Collection root = first path segment under the external folder
+      var collName = path.relative(external, filepath).split(path.sep)[0];
+      if (!collName || collName === '..') {
+        return false;
+      }
+      try {
+        var pkg = JSON.parse(
+          fs.readFileSync(path.join(external, collName, 'package.json'))
         );
+        return !!pkg.icehub;
+      } catch (e) {
+        return false;
+      }
+    }
+
+    //-- Open a volatile example copy: the project path stays empty (so Save
+    //-- asks for a destination instead of writing silently into the temp
+    //-- folder) and the copy is kept out of the recent projects list
+    function openExampleCopy(tmpIce) {
+      if (zeroProject) {
+        updateWorkingdir(tmpIce);
+        project.open(tmpIce, true);
+      } else {
+        utils.newWindow(tmpIce, { emptyPath: true });
+      }
+    }
+
+    //-- Fallback when the OS temp folder is not writable (previous
+    //-- behavior): ask for a destination folder and open the copy there
+    function askAndCopyExample(filepath) {
+      alertify.confirm(
+        gettextCatalog.getString('Open example'),
+        gettextCatalog.getString(
+          'This is a system example. You need to select a destination folder where the design will be saved.'
+        ),
+        function () {
+          utils.directoryDialog('#input-choose-save-dir', function (targetDir) {
+            var filename = path.basename(filepath);
+            var targetPath = path.join(targetDir, filename);
+            utils.copySync(filepath, targetPath);
+
+            if (zeroProject) {
+              updateWorkingdir(targetPath);
+              project.open(targetPath);
+            } else {
+              utils.newWindow(targetPath);
+            }
+            addRecentProject(targetPath);
+          });
+        },
+        function () {}
+      );
+    }
+
+    $scope.openProject = function (filepath) {
+      // Read-only examples (distribution or installed collections) are
+      // copied to the OS temp folder and opened from there without asking;
+      // only when no writable temp folder exists we fall back to asking
+      // for a destination folder (previous behavior).
+      if (isReadOnlyExample(filepath)) {
+        var tmpIce = utils.copyExampleToTmp(filepath);
+        if (tmpIce) {
+          openExampleCopy(tmpIce);
+        } else {
+          askAndCopyExample(filepath);
+        }
         return;
       }
 
@@ -497,11 +594,22 @@ angular.module('icestudio').controller(
 
         project.save(filepath, function () {
           reloadCollectionsIfRequired(filepath);
+
+          //-- A project saved under a new path IS a project the user will
+          //-- want to reopen: record it (this is also how a volatile example
+          //-- copy enters the recent list — only once it has a real home)
+          addRecentProject(filepath);
+
+          //-- Only now the file is fully written on disk: reset the changed
+          //-- state and run the pending action (e.g. closing the window).
+          //-- Running these synchronously after STARTING the save raced the
+          //-- async write — closing the last window could quit NW.js with a
+          //-- half-written (empty) .ice on disk.
+          resetChangedStack();
+          if (localCallback) {
+            localCallback();
+          }
         });
-        resetChangedStack();
-        if (localCallback) {
-          localCallback();
-        }
       });
     };
 

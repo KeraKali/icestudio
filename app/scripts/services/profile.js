@@ -52,7 +52,7 @@ angular
 
         //-- Store the values from the file into the common.data global object
         .then(function (data) {
-          self.data = {
+          var loaded = {
             board: data.board || '',
             boardRules: data.boardRules !== false,
             allowInoutPorts: data.allowInoutPorts === true,
@@ -74,6 +74,19 @@ angular
             setupWizardDone: data.setupWizardDone === true,
             toolPreferences: data.toolPreferences || {},
           };
+
+          //-- Keys changed locally and not yet persisted must survive a
+          //-- (re)load: the app issues more than one load at startup and
+          //-- reloads on demand (e.g. theme change) — replacing them here
+          //-- would revert the live value, and a save() in flight would then
+          //-- persist the stale one.
+          dirtyKeys.forEach(function (k) {
+            if (Object.prototype.hasOwnProperty.call(loaded, k)) {
+              loaded[k] = self.data[k];
+            }
+          });
+
+          self.data = loaded;
 
           if (self.data.pythonEnv.python.length > 0) {
             common.PYTHON_ENV = self.data.pythonEnv.python;
