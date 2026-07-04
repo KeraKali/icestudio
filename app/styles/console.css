@@ -137,8 +137,6 @@
 .oc-hint a:hover {
   color: #a6d8ff;
 }
-
-
 /* Resize handle – thin draggable bar at the top of the console */
 .output-console--resize-handle {
   position: absolute;

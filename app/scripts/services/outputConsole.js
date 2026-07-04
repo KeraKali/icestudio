@@ -357,9 +357,6 @@ angular.module('icestudio').service('outputConsole', function (gettextCatalog) {
       });
     });
   }
-  
-  
-
     var consoleEl = null;
     var handle = null;
     var maxBtn = null;
