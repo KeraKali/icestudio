@@ -367,7 +367,9 @@ angular.module('icestudio').service('outputConsole', function (gettextCatalog) {
     consoleEl = document.getElementById('output-console');
     handle = document.getElementById('output-console-resize-handle');
     maxBtn = document.getElementById('output-console-maximize');
-    if (!consoleEl || !handle || !maxBtn) return false;
+    if (!consoleEl || !handle || !maxBtn) {
+      return false;
+    }
 
     // Remove old listeners to avoid duplicates (in case of re‑init)
     handle.removeEventListener('mousedown', startResize);
@@ -400,7 +402,9 @@ angular.module('icestudio').service('outputConsole', function (gettextCatalog) {
   }
 
   function startResize(e) {
-    if (consoleEl.classList.contains('maximized')) return;
+    if (consoleEl.classList.contains('maximized')) {
+      return;
+    }
     isResizing = true;
     startY = e.clientY;
     startHeight = parseInt(window.getComputedStyle(consoleEl).height, 10);
@@ -409,13 +413,19 @@ angular.module('icestudio').service('outputConsole', function (gettextCatalog) {
   }
 
   function doResize(e) {
-    if (!isResizing) return;
+    if (!isResizing) {
+      return;
+    }
     var deltaY = e.clientY - startY;
     var newHeight = startHeight - deltaY;
     var minHeight = 50;
     var maxHeight = window.innerHeight - 100;
-    if (newHeight < minHeight) newHeight = minHeight;
-    if (newHeight > maxHeight) newHeight = maxHeight;
+    if (newHeight < minHeight) {
+      newHeight = minHeight;
+    }
+    if (newHeight > maxHeight) {
+      newHeight = maxHeight;
+    }
     consoleEl.style.height = newHeight + 'px';
     consoleEl.style.top = '';
     consoleEl.classList.remove('maximized');
