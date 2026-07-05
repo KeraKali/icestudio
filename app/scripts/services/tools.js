@@ -1032,6 +1032,17 @@ angular
             'default',
             bitstreamName
           ),
+          //-- Same bitstream, but RELATIVE to the build dir. Custom commands
+          //-- run with cwd = common.BUILD_DIR (see runSequential), so this
+          //-- resolves to the same file. Prefer it in toolchain command lines
+          //-- that must survive spaces in the path: a relative path has no
+          //-- spaces, so it is immune to a space anywhere in the build dir
+          //-- (temp folder, spaced Windows username, "My Documents"...) that
+          //-- some launchers mangle — e.g. openFPGALoader through `apio raw`
+          //-- on Windows, which re-splits an absolute quoted path at the
+          //-- first space. cwd is passed to the process directly, never
+          //-- through the shell/command string, so it is not affected.
+          BITSTREAM_REL: nodePath.join('_build', 'default', bitstreamName),
           VERILOG: nodePath.join(common.BUILD_DIR, 'main.v'),
           ARCH: arch,
           APIO: utils.getApioExecutable(),
