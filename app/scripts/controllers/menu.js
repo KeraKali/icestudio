@@ -970,7 +970,7 @@ angular.module('icestudio').controller(
         (verify.relaxIoPrimitives ? ' checked' : '') +
         '> ' +
         gettextCatalog.getString(
-          'Relax the FPGA I/O primitive checks (SB_IO: ASSIGNIN / COMBDLY)'
+          'Relax the FPGA I/O primitive checks (SB_IO / TRELLIS_IO)'
         ) +
         '</label></div>' +
         '</div>' +

@@ -58,10 +58,13 @@ angular.module('icestudio').service('outputConsole', function (gettextCatalog) {
         payload: { tab: 'verify' },
       },
       {
-        //-- ASSIGNIN (a module input wired to the SB_IO inout PACKAGE_PIN) and
-        //-- COMBDLY (the vendor SB_IO model) are tripped by the FPGA I/O
-        //-- primitives. Match the real Verilator messages, not the echoed flag.
-        test: /%(Warning|Error)-(ASSIGNIN|COMBDLY)|Assigning to input\/const variable/i,
+        //-- ASSIGNIN (a module input wired to the SB_IO inout PACKAGE_PIN),
+        //-- COMBDLY (the vendor SB_IO model) and, on ECP5, MODMISSING for the
+        //-- TRELLIS_IO vendor primitive (the pull-up / tri-state blocks) are
+        //-- all tripped by the FPGA I/O primitives. Match the real Verilator
+        //-- messages, not the echoed flag. MODMISSING is scoped to TRELLIS_IO
+        //-- so a genuinely missing user module still hints nothing here.
+        test: /%(Warning|Error)-(ASSIGNIN|COMBDLY)|Assigning to input\/const variable|%(Warning|Error)-MODMISSING[^\n]*TRELLIS_IO/i,
         //-- Only hint when the relaxation is not already enabled.
         when: function () {
           return !verifyPref('relaxIoPrimitives');

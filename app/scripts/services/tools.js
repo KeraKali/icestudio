@@ -813,12 +813,21 @@ angular
       //--                            edit the generated connection.
       //--   COMBDLY  (cells_sim.v) : non-blocking '<=' in a combinational block
       //--                            inside the vendor SB_IO simulation model.
+      //--   MODMISSING (main.v)    : on ECP5 the pull-up / tri-state blocks
+      //--                            instantiate the TRELLIS_IO vendor primitive,
+      //--                            which is not in the ecp5 blackbox file
+      //--                            (cells_bb.v) Verify passes to Verilator, so
+      //--                            lint reports "Cannot find file containing
+      //--                            module: 'TRELLIS_IO'". yosys resolves it at
+      //--                            synthesis; the user cannot edit the
+      //--                            generated instantiation.
       //-- Extensible: add a "lint_off -rule <X> -file <Y>" line per new case.
       var VERILATOR_WAIVERS_FILE = 'icestudio_waivers.vlt';
       var VERILATOR_WAIVERS_CONTENT =
         '`verilator_config\n' +
         'lint_off -rule ASSIGNIN -file "*main.v"\n' +
-        'lint_off -rule COMBDLY -file "*cells_sim.v"\n';
+        'lint_off -rule COMBDLY -file "*cells_sim.v"\n' +
+        'lint_off -rule MODMISSING -file "*main.v"\n';
 
       //-- Write the Verilator waiver file into the build directory, but only
       //-- when the user enabled the "Relax I/O primitive checks" toggle (so

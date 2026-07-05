@@ -2684,3 +2684,7 @@ msgstr ""
 #: app/scripts/services/project.js
 msgid "Module {{name}} exported"
 msgstr ""
+
+#: app/scripts/controllers/menu.js
+msgid "Relax the FPGA I/O primitive checks (SB_IO / TRELLIS_IO)"
+msgstr ""

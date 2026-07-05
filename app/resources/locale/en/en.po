@@ -2888,3 +2888,6 @@ msgstr ""
 
 msgid "Module {{name}} exported"
 msgstr "Module {{name}} exported"
+
+msgid "Relax the FPGA I/O primitive checks (SB_IO / TRELLIS_IO)"
+msgstr "Relax the FPGA I/O primitive checks (SB_IO / TRELLIS_IO)"
