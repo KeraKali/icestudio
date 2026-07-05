@@ -627,6 +627,50 @@ angular
         this.filepath = filepath;
       };
 
+      //-- Export the sub-design currently being viewed as a standalone .ice
+      //-- file, WITHOUT touching the open project (its path, root design and
+      //-- build dir stay as they were). Used by "Save as" while navigated into
+      //-- an editable submodule: the warning tells the user it behaves like
+      //-- "Export module" (save just this module, not the whole design).
+      //-- project.save, in contrast, folds the submodule back into the ROOT
+      //-- project and saves that — which is what Ctrl+S must keep doing.
+      this.exportSubmodule = function (filepath, callback) {
+        var name = utils.basename(filepath);
+        //-- The live graph currently shows the submodule, so serializing it
+        //-- yields the module's own design + its resolved sub-dependencies.
+        var data = graph.toJSON();
+        var exported = utils.cellsToProject(data.cells);
+        //-- Carry the module's package metadata (name/version/...) so the
+        //-- exported file is a proper, recognizable block.
+        var subId = common.submoduleId;
+        var dep = subId ? common.allDependencies[subId] : null;
+        exported.package =
+          dep && dep.package
+            ? utils.clone(dep.package)
+            : {
+                name: name,
+                version: '',
+                description: '',
+                author: '',
+                image: '',
+              };
+        utils
+          .saveFile(filepath, pruneProject(exported))
+          .then(function () {
+            alertify.success(
+              gettextCatalog.getString('Module {{name}} exported', {
+                name: utils.bold(name),
+              })
+            );
+            if (callback) {
+              callback();
+            }
+          })
+          .catch(function (error) {
+            alertify.error(error, 30);
+          });
+      };
+
       function sortGraph() {
         var cells = graph.getCells();
 

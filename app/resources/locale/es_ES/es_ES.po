@@ -2906,3 +2906,6 @@ msgstr ""
 "crees en ella (mismo formato que las placas de la distribución) en todos "
 "los listados de placas, sin copiarla en cada proyecto. Esta carpeta es "
 "obligatoria y debe existir."
+
+msgid "Module {{name}} exported"
+msgstr "Módulo {{name}} exportado"

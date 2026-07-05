@@ -2885,3 +2885,6 @@ msgstr ""
 "folder and offer any board you place or create inside it (same format as "
 "the distribution boards) in every board list, without copying it into each "
 "project. This folder is required and must exist."
+
+msgid "Module {{name}} exported"
+msgstr "Module {{name}} exported"

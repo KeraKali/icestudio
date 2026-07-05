@@ -2680,3 +2680,7 @@ msgid ""
 "the distribution boards) in every board list, without copying it into each "
 "project. This folder is required and must exist."
 msgstr ""
+
+#: app/scripts/services/project.js
+msgid "Module {{name}} exported"
+msgstr ""

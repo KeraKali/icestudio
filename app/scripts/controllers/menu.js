@@ -590,6 +590,21 @@ angular.module('icestudio').controller(
 
     $scope.doSaveProjectAs = function (localCallback) {
       utils.saveDialog(project.name + '.ice', '.ice', function (filepath) {
+        //-- Navigated into an editable submodule of an ALREADY-SAVED project:
+        //-- "Save as" EXPORTS just that module to a standalone .ice (as the
+        //-- confirm warned), leaving the open project untouched — no
+        //-- path/workingdir/recent/changed change. A never-saved project
+        //-- (no path) falls through to a full save so the whole design is
+        //-- written (matches the pre-existing save-before-close behavior).
+        if (common.isEditingSubmodule && project.path) {
+          project.exportSubmodule(filepath, function () {
+            if (localCallback) {
+              localCallback();
+            }
+          });
+          return;
+        }
+
         updateWorkingdir(filepath);
 
         project.save(filepath, function () {
@@ -631,8 +646,15 @@ angular.module('icestudio').controller(
       } else {
         if (
           typeof common.isEditingSubmodule !== 'undefined' &&
-          common.isEditingSubmodule === true
+          common.isEditingSubmodule === true &&
+          project.path
         ) {
+          //-- Only offer "export just this submodule" for an ALREADY-SAVED
+          //-- project (extracting a piece of a design that has a home). When
+          //-- the project was never saved (no path), "Save" must save the
+          //-- WHOLE design instead — otherwise saving before closing a new,
+          //-- unsaved design from inside a submodule would export only the
+          //-- submodule and lose the rest.
           alertify.confirm(
             gettextCatalog.getString('Export submodule'),
             gettextCatalog.getString(
@@ -640,7 +662,15 @@ angular.module('icestudio').controller(
                 module\"). Do you want to continue?'
             ),
             function () {
-              $scope.doSaveProjectAs(localCallback);
+              //-- Deferred on purpose: alertify.confirm is a SINGLETON and
+              //-- the Save As dialog (utils.saveDialog) is another
+              //-- alertify.confirm. Opening it synchronously here reuses this
+              //-- still-open instance, which alertify then closes as this
+              //-- ok-callback returns — so the Save As flashed and vanished
+              //-- ("continue did nothing"). Let this confirm close first.
+              setTimeout(function () {
+                $scope.doSaveProjectAs(localCallback);
+              }, 0);
             },
             function () {}
           );
