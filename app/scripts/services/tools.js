@@ -1129,6 +1129,32 @@ angular
         return '';
       }
 
+      //-- Windows-only: return the 8.3 short form of an (existing) directory.
+      //-- A path with spaces is mangled when it travels through `apio raw`
+      //-- (apio re-joins argv and the shell re-splits at the space), and a
+      //-- path relative to the build dir is not found either because
+      //-- `apio raw` does not run the wrapped tool with our cwd on Windows
+      //-- (it does on macOS/Linux). The one form that always survives is an
+      //-- ABSOLUTE path with no spaces, i.e. the short name of the build dir,
+      //-- which always exists at command time. No-op off Windows and, if the
+      //-- lookup fails (e.g. 8.3 creation disabled), falls back to the input.
+      function shortBuildDir(dir) {
+        if (process.platform !== 'win32' || !dir) {
+          return dir;
+        }
+        try {
+          var out = nodeChildProcess
+            .execSync('for %I in ("' + dir + '") do @echo %~sI', {
+              shell: 'cmd.exe',
+            })
+            .toString()
+            .trim();
+          return out || dir;
+        } catch (e) {
+          return dir;
+        }
+      }
+
       //-- Build the placeholder substitution context for custom commands
       function buildPlaceholderContext() {
         var board = common.selectedBoard;
@@ -1153,29 +1179,31 @@ angular
         var projectDir =
           project.dirname ||
           (project.filepath ? utils.dirname(project.filepath) : '');
+        //-- Build dir made safe to embed in a custom command line: on Windows
+        //-- its 8.3 short form (space-free, immune to `apio raw` mangling),
+        //-- unchanged elsewhere.
+        var safeBuildDir = shortBuildDir(common.BUILD_DIR);
         return {
           BUILD_DIR: common.BUILD_DIR,
           TOP: 'main',
           CONSTRAINT_FILE: nodePath.join(common.BUILD_DIR, constraintName),
           //-- apio (>=1.3) builds into <build>/_build/<env>/, and icestudio's
           //-- apio.ini always declares [env:default], so the bitstream is here
-          //-- (NOT at the build-dir root as in older apio).
+          //-- (NOT at the build-dir root as in older apio). ABSOLUTE and, on
+          //-- Windows, space-free (safeBuildDir is the 8.3 short name): this
+          //-- is the form that survives `apio raw` on every OS, so it is the
+          //-- one to use in custom upload commands (openFPGALoader, etc.).
           BITSTREAM: nodePath.join(
-            common.BUILD_DIR,
+            safeBuildDir,
             '_build',
             'default',
             bitstreamName
           ),
-          //-- Same bitstream, but RELATIVE to the build dir. Custom commands
-          //-- run with cwd = common.BUILD_DIR (see runSequential), so this
-          //-- resolves to the same file. Prefer it in toolchain command lines
-          //-- that must survive spaces in the path: a relative path has no
-          //-- spaces, so it is immune to a space anywhere in the build dir
-          //-- (temp folder, spaced Windows username, "My Documents"...) that
-          //-- some launchers mangle — e.g. openFPGALoader through `apio raw`
-          //-- on Windows, which re-splits an absolute quoted path at the
-          //-- first space. cwd is passed to the process directly, never
-          //-- through the shell/command string, so it is not affected.
+          //-- Same bitstream, RELATIVE to the build dir. Works only when the
+          //-- tool runs with cwd = common.BUILD_DIR. That holds for our own
+          //-- exec (see runSequential) but NOT through `apio raw` on Windows,
+          //-- which drops the cwd — so do not use it in `apio raw` command
+          //-- lines (prefer {BITSTREAM}). Kept for commands we run directly.
           BITSTREAM_REL: nodePath.join('_build', 'default', bitstreamName),
           VERILOG: nodePath.join(common.BUILD_DIR, 'main.v'),
           ARCH: arch,

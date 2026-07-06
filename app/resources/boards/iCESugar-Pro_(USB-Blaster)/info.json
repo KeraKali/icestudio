@@ -18,7 +18,7 @@
   },
   "commands": {
     "upload": [
-      "{APIO_CMD} raw -- openFPGALoader -c usb-blaster -v --file-type bin \"{BITSTREAM_REL}\""
+      "{APIO_CMD} raw -- openFPGALoader -c usb-blaster -v --file-type bin \"{BITSTREAM}\""
     ]
   }
 }
