@@ -42,7 +42,66 @@ angular
             graph: { blocks: [], wires: [] },
           },
           dependencies: {},
+          //-- Per-project settings, stored inside the .ice. Purely additive:
+          //-- it does not change the .ice `version` (checkVersion only rejects
+          //-- NEWER formats), survives the open→update→prune→save round-trip
+          //-- untouched, and carries its OWN `version` so it can grow without
+          //-- touching common.VERSION. Old .ice files lack it; it is defaulted
+          //-- on load (see _safeUpgradeVersion) so get/set never misbehave.
+          settings: _defaultSettings(),
         };
+      }
+
+      //-- Canonical shape of the per-project settings node. Mirrors the global
+      //-- Tools > Preferences tabs (verify/build/upload). `override` per tab:
+      //-- when true only the project options are used; when false they are
+      //-- merged with the globals (see tools.effectiveVerify/effectiveBuild).
+      function _defaultSettings() {
+        return {
+          version: 1,
+          tools: {
+            verify: {
+              override: false,
+              relaxRealToInt: false,
+              relaxIoPrimitives: false,
+            },
+            build: {
+              override: false,
+              yosysFlags: '',
+              nextpnrFlags: '',
+            },
+            upload: {
+              override: false,
+            },
+          },
+        };
+      }
+
+      //-- Ensure a loaded project has a well-formed settings node. Files saved
+      //-- before this feature (or legacy upgrades) lack it, and project.get()
+      //-- returns the WHOLE project when a key is absent — so we must always
+      //-- materialize it. Missing sub-keys are filled from the defaults.
+      function _normalizeSettings(proj) {
+        var def = _defaultSettings();
+        var s =
+          proj.settings && typeof proj.settings === 'object'
+            ? proj.settings
+            : {};
+        s.version = s.version || def.version;
+        s.tools = s.tools && typeof s.tools === 'object' ? s.tools : {};
+        ['verify', 'build', 'upload'].forEach(function (tab) {
+          s.tools[tab] = _mergePlain(def.tools[tab], s.tools[tab] || {});
+        });
+        proj.settings = s;
+        return proj;
+      }
+
+      function _mergePlain(defaults, over) {
+        var out = {};
+        for (var k in defaults) {
+          out[k] = k in over ? over[k] : defaults[k];
+        }
+        return out;
       }
 
       iceStudio.bus.events.subscribe('block.addFromFile', 'addBlockFile', this);
@@ -390,6 +449,9 @@ angular
             break;
         }
         project.version = common.VERSION;
+        //-- Files saved before the settings feature (and legacy upgrades) lack
+        //-- the node; materialize a well-formed one so get/set never misfire.
+        _normalizeSettings(project);
         return project;
       }
 

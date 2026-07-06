@@ -799,8 +799,95 @@ angular
         if (verilatorExtra.length) {
           ini += 'verilator-extra-options = ' + verilatorExtra.join(' ') + '\n';
         }
+
+        //-- Synthesis (yosys) and place & route (nextpnr) extra flags from
+        //-- Tools > Preferences > Build. apio appends them to the normal
+        //-- synth_<arch> / nextpnr-<arch> invocations (no "apio raw" needed).
+        //-- The user may type them space- or line-separated; apio.ini values
+        //-- are single-line, so flatten any whitespace. The key is omitted
+        //-- when empty so it does not perturb apio.ini (and its build cache).
+        var build = effectiveBuild();
+        if (build.yosysFlags) {
+          ini += 'yosys-extra-options = ' + build.yosysFlags + '\n';
+        }
+        if (build.nextpnrFlags) {
+          ini += 'nextpnr-extra-options = ' + build.nextpnrFlags + '\n';
+        }
         return ini;
       }
+
+      //-- Flatten a user-entered flags string (possibly multi-line) into the
+      //-- single-line form apio.ini requires: any run of whitespace (newlines,
+      //-- tabs, repeated spaces) becomes a single space, trimmed.
+      function normalizeFlags(s) {
+        return String(s || '')
+          .replace(/\s+/g, ' ')
+          .trim();
+      }
+
+      function joinFlags(a, b) {
+        //-- GLOBAL first, then PROJECT, in a FIXED order so the merged value is
+        //-- deterministic (apio.ini is rewritten only when it changes, so a
+        //-- stable order preserves apio's build cache).
+        return normalizeFlags(normalizeFlags(a) + ' ' + normalizeFlags(b));
+      }
+
+      //-- Per-project tool settings (verify/build/upload) read from the .ice
+      //-- via the project service. Defensive: project.get('settings') is
+      //-- normalized on load, but return {} on anything unexpected.
+      function projectToolSettings(section) {
+        try {
+          var s = project.get('settings');
+          if (!s || typeof s !== 'object' || !s.tools) {
+            return {};
+          }
+          return s.tools[section] || {};
+        } catch (e) {
+          return {};
+        }
+      }
+
+      //-- Effective Verify options = global (profile) combined with the
+      //-- project's (.ice), honoring the per-tab "override globals" flag:
+      //--   override true  -> project options only (globals ignored)
+      //--   override false -> merge (the booleans are OR'd)
+      function effectiveVerify() {
+        var g = (profile.get('toolPreferences') || {}).verify || {};
+        var p = projectToolSettings('verify');
+        if (p.override) {
+          return {
+            relaxRealToInt: !!p.relaxRealToInt,
+            relaxIoPrimitives: !!p.relaxIoPrimitives,
+          };
+        }
+        return {
+          relaxRealToInt: !!g.relaxRealToInt || !!p.relaxRealToInt,
+          relaxIoPrimitives: !!g.relaxIoPrimitives || !!p.relaxIoPrimitives,
+        };
+      }
+
+      //-- Effective Build flags = global + project (.ice), honoring override:
+      //--   override true  -> project flags only
+      //--   override false -> concatenate global-then-project (fixed order)
+      function effectiveBuild() {
+        var g = (profile.get('toolPreferences') || {}).build || {};
+        var p = projectToolSettings('build');
+        if (p.override) {
+          return {
+            yosysFlags: normalizeFlags(p.yosysFlags),
+            nextpnrFlags: normalizeFlags(p.nextpnrFlags),
+          };
+        }
+        return {
+          yosysFlags: joinFlags(g.yosysFlags, p.yosysFlags),
+          nextpnrFlags: joinFlags(g.nextpnrFlags, p.nextpnrFlags),
+        };
+      }
+
+      //-- Exposed so the output-console hint engine can reflect the EFFECTIVE
+      //-- Verify config (global merged with the project's) when deciding
+      //-- whether to suggest enabling a relaxation.
+      this.effectiveVerify = effectiveVerify;
 
       //-- Verilator waiver file written next to apio.ini. It uses FILE-SCOPED
       //-- lint_off rules so the relaxed checks only apply where the offending
@@ -835,8 +922,7 @@ angular
       //-- console can hint at the option). Rewrites only when it changed, to
       //-- preserve apio's build cache. Referenced from verilator-extra-options.
       function writeVerilatorWaivers() {
-        var verify = (profile.get('toolPreferences') || {}).verify || {};
-        if (!verify.relaxIoPrimitives) {
+        if (!effectiveVerify().relaxIoPrimitives) {
           return;
         }
         var hd = new IceHD();
@@ -858,7 +944,7 @@ angular
       //--   relaxRealToInt    -> -Wno-REALCVT
       function getVerilatorExtraOptions() {
         var opts = [];
-        var verify = (profile.get('toolPreferences') || {}).verify || {};
+        var verify = effectiveVerify();
         if (verify.relaxIoPrimitives) {
           //-- File-scoped waiver: ASSIGNIN (the generated SB_IO IO connection)
           //-- and COMBDLY (the vendor SB_IO model). Scoped so the same checks
@@ -2285,7 +2371,9 @@ angular
           });
           child.unref();
           alertify.message(
-            gettextCatalog.getString('Running ' + manual + ' in a terminal...')
+            gettextCatalog.getString('Running {{cmd}} in a terminal...', {
+              cmd: manual,
+            })
           );
         } catch (e) {
           alertify.warning(

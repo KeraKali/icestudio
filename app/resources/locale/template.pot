@@ -2688,3 +2688,39 @@ msgstr ""
 #: app/scripts/controllers/menu.js
 msgid "Relax the FPGA I/O primitive checks (SB_IO / TRELLIS_IO)"
 msgstr ""
+
+#: app/scripts/controllers/menu.js
+msgid "Yosys options (synthesis)"
+msgstr ""
+
+#: app/scripts/controllers/menu.js
+msgid "Nextpnr options (place & route)"
+msgstr ""
+
+#: app/scripts/controllers/menu.js
+msgid "Extra flags for yosys, space- or line-separated (e.g. -abc9 -nowidelut)"
+msgstr ""
+
+#: app/scripts/controllers/menu.js
+msgid "Extra flags for nextpnr, space- or line-separated (e.g. --seed 2 --timing-allow-fail)"
+msgstr ""
+
+#: app/scripts/controllers/menu.js
+msgid "Cleaned: "
+msgstr ""
+
+#: app/scripts/services/tools.js
+msgid "Running {{cmd}} in a terminal..."
+msgstr ""
+
+#: app/scripts/controllers/menu.js
+msgid "Global"
+msgstr ""
+
+#: app/scripts/controllers/menu.js
+msgid "Project"
+msgstr ""
+
+#: app/scripts/controllers/menu.js
+msgid "Override globals"
+msgstr ""

@@ -27,11 +27,18 @@ angular.module('icestudio').service('outputConsole', function (gettextCatalog) {
   //-- `action` (optional) renders a link that publishes a bus event so the
   //-- main app can react (e.g. open the Preferences panel on the right tab).
   //-----------------------------------------------------------------------
-  //-- Read a Verify preference flag from the profile (false on any error).
+  //-- Read the EFFECTIVE Verify flag (global merged with the current project's
+  //-- .ice settings, honoring "override globals"). Falls back to the global
+  //-- profile if the tools service is unavailable. False on any error.
   function verifyPref(name) {
     try {
-      var profile = angular.element(document.body).injector().get('profile');
-      var verify = (profile.get('toolPreferences') || {}).verify || {};
+      var inj = angular.element(document.body).injector();
+      var tools = inj.get('tools');
+      if (tools && typeof tools.effectiveVerify === 'function') {
+        return !!tools.effectiveVerify()[name];
+      }
+      var verify =
+        (inj.get('profile').get('toolPreferences') || {}).verify || {};
       return !!verify[name];
     } catch (e) {
       return false;

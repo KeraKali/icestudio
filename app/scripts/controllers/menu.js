@@ -925,80 +925,230 @@ angular.module('icestudio').controller(
       };
     });
 
-    //-- Persist the Preferences panel state into the profile.
+    //-- Persist the Preferences panel state. GLOBAL options go to the profile;
+    //-- PROJECT options go into the .ice (project.settings.tools), and changing
+    //-- them marks the design dirty so the user is prompted to save.
     function savePreferences() {
+      //-- GLOBAL tab -> profile.toolPreferences
       var prefs = profile.get('toolPreferences') || {};
       prefs.verify = prefs.verify || {};
       prefs.verify.relaxRealToInt = $('#pref-relax-realcvt').is(':checked');
       prefs.verify.relaxIoPrimitives = $('#pref-relax-io').is(':checked');
+      //-- Build: free-form extra flags for yosys (synthesis) and nextpnr
+      //-- (place & route). Stored verbatim (the user's line layout is kept);
+      //-- they are flattened to a single line when written into apio.ini.
+      prefs.build = prefs.build || {};
+      prefs.build.yosysFlags = $('#pref-yosys-flags').val() || '';
+      prefs.build.nextpnrFlags = $('#pref-nextpnr-flags').val() || '';
       profile.set('toolPreferences', prefs);
+
+      //-- PROJECT tab -> project.settings.tools (persisted inside the .ice).
+      //-- The per-tab "Override globals" flag decides merge vs project-only at
+      //-- build/verify time (tools.effectiveVerify/effectiveBuild).
+      var settings = project.get('settings') || {};
+      settings.tools = settings.tools || {};
+      var before = JSON.stringify(settings.tools);
+      settings.tools.verify = {
+        override: $('#pref-proj-verify-override').is(':checked'),
+        relaxRealToInt: $('#pref-proj-relax-realcvt').is(':checked'),
+        relaxIoPrimitives: $('#pref-proj-relax-io').is(':checked'),
+      };
+      settings.tools.build = {
+        override: $('#pref-proj-build-override').is(':checked'),
+        yosysFlags: $('#pref-proj-yosys-flags').val() || '',
+        nextpnrFlags: $('#pref-proj-nextpnr-flags').val() || '',
+      };
+      settings.tools.upload = {
+        override: $('#pref-proj-upload-override').is(':checked'),
+      };
+      project.set('settings', settings);
+      if (JSON.stringify(settings.tools) !== before) {
+        project.changed = true;
+        project.updateTitle();
+      }
     }
 
     //-- Open the Tools > Preferences panel.
     $scope.openPreferences = function () {
+      //-- GLOBAL values from the profile
       var prefs = profile.get('toolPreferences') || {};
-      var verify = prefs.verify || {};
+      var gVerify = prefs.verify || {};
+      var gBuild = prefs.build || {};
+      //-- PROJECT values from the .ice (settings.tools). Normalized on load,
+      //-- but stay defensive in case the node is partial.
+      var pTools = (project.get('settings') || {}).tools || {};
+      var pVerify = pTools.verify || {};
+      var pBuild = pTools.build || {};
+      var pUpload = pTools.upload || {};
       var noOpts = gettextCatalog.getString('No configuration options');
 
-      //-- Same tab markup/classes as the code-block editor (forms.js):
-      //-- ul.tabs > li.tab-item + div.tab-content, visibility driven by the
-      //-- "active" class (styled in styles/design.css + the uiThemes).
+      //-- Escape user text before injecting it into the dialog HTML (the
+      //-- Build flags are free-form and could otherwise break the markup).
+      function escHtml(s) {
+        return String(s || '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;');
+      }
+
+      //-- Two levels of tabs: top level GLOBAL | PROJECT, and inside each the
+      //-- Verify / Build / Upload sub-tabs (same markup/classes as the
+      //-- code-block editor; visibility driven by the "active" class). The
+      //-- PROJECT sub-tabs add an "Override globals" checkbox. scopePane()
+      //-- builds one scope's sub-tabs so the two scopes stay in sync.
+      function scopePane(scope, active) {
+        var isProj = scope === 'project';
+        var id = isProj ? 'pref-proj-' : 'pref-';
+        var v = isProj ? pVerify : gVerify;
+        var b = isProj ? pBuild : gBuild;
+        function override(tab, on) {
+          if (!isProj) {
+            return '';
+          }
+          return (
+            '<div class="checkbox pref-override"><label>' +
+            '<input type="checkbox" id="' +
+            id +
+            tab +
+            '-override"' +
+            (on ? ' checked' : '') +
+            '> ' +
+            gettextCatalog.getString('Override globals') +
+            '</label></div>'
+          );
+        }
+        var verifyPane =
+          '<div class="tab-content active" data-content="verify">' +
+          override('verify', !!pVerify.override) +
+          '<div class="checkbox"><label>' +
+          '<input type="checkbox" id="' +
+          id +
+          'relax-realcvt"' +
+          (v.relaxRealToInt ? ' checked' : '') +
+          '> ' +
+          gettextCatalog.getString(
+            'Relax the real-to-integer conversion check (-Wno-REALCVT)'
+          ) +
+          '</label></div>' +
+          '<div class="checkbox"><label>' +
+          '<input type="checkbox" id="' +
+          id +
+          'relax-io"' +
+          (v.relaxIoPrimitives ? ' checked' : '') +
+          '> ' +
+          gettextCatalog.getString(
+            'Relax the FPGA I/O primitive checks (SB_IO / TRELLIS_IO)'
+          ) +
+          '</label></div>' +
+          '</div>';
+        var buildPane =
+          '<div class="tab-content" data-content="build">' +
+          override('build', !!pBuild.override) +
+          '<div class="form-group"><label>' +
+          gettextCatalog.getString('Yosys options (synthesis)') +
+          '</label>' +
+          '<textarea id="' +
+          id +
+          'yosys-flags" class="ajs-input" rows="3" ' +
+          'style="width:100%;margin-top:4px;font-family:monospace;" ' +
+          'placeholder="' +
+          gettextCatalog.getString(
+            'Extra flags for yosys, space- or line-separated (e.g. -abc9 -nowidelut)'
+          ) +
+          '">' +
+          escHtml(b.yosysFlags || '') +
+          '</textarea></div>' +
+          '<div class="form-group"><label>' +
+          gettextCatalog.getString('Nextpnr options (place & route)') +
+          '</label>' +
+          '<textarea id="' +
+          id +
+          'nextpnr-flags" class="ajs-input" rows="3" ' +
+          'style="width:100%;margin-top:4px;font-family:monospace;" ' +
+          'placeholder="' +
+          gettextCatalog.getString(
+            'Extra flags for nextpnr, space- or line-separated (e.g. --seed 2 --timing-allow-fail)'
+          ) +
+          '">' +
+          escHtml(b.nextpnrFlags || '') +
+          '</textarea></div>' +
+          '</div>';
+        var uploadPane =
+          '<div class="tab-content" data-content="upload">' +
+          override('upload', !!pUpload.override) +
+          noOpts +
+          '</div>';
+        return (
+          '<div class="scope-content' +
+          (active ? ' active' : '') +
+          '" data-scope="' +
+          scope +
+          '">' +
+          '<ul class="tabs sub-tabs">' +
+          '<li class="tab-item active" data-tab="verify">' +
+          gettextCatalog.getString('Verify') +
+          '</li>' +
+          '<li class="tab-item" data-tab="build">' +
+          gettextCatalog.getString('Build') +
+          '</li>' +
+          '<li class="tab-item" data-tab="upload">' +
+          gettextCatalog.getString('Upload') +
+          '</li>' +
+          '</ul>' +
+          verifyPane +
+          buildPane +
+          uploadPane +
+          '</div>'
+        );
+      }
+
       var content =
+        '<style>.preferences-dialog .scope-content{display:none}' +
+        '.preferences-dialog .scope-content.active{display:block}' +
+        '.preferences-dialog .top-tabs{margin-bottom:14px}' +
+        '.preferences-dialog .sub-tabs{margin-top:0}' +
+        '.preferences-dialog .pref-override{margin-bottom:8px;' +
+        'padding-bottom:6px;border-bottom:1px solid rgba(128,128,128,.25)}' +
+        '</style>' +
         '<div class="preferences-dialog">' +
-        '<ul class="tabs">' +
-        '<li class="tab-item active" data-tab="verify">' +
-        gettextCatalog.getString('Verify') +
+        '<ul class="tabs top-tabs">' +
+        '<li class="tab-item active" data-scope="global">' +
+        gettextCatalog.getString('Global') +
         '</li>' +
-        '<li class="tab-item" data-tab="build">' +
-        gettextCatalog.getString('Build') +
-        '</li>' +
-        '<li class="tab-item" data-tab="upload">' +
-        gettextCatalog.getString('Upload') +
+        '<li class="tab-item" data-scope="project">' +
+        gettextCatalog.getString('Project') +
         '</li>' +
         '</ul>' +
-        '<div class="tab-content active" data-content="verify">' +
-        '<div class="checkbox"><label>' +
-        '<input type="checkbox" id="pref-relax-realcvt"' +
-        (verify.relaxRealToInt ? ' checked' : '') +
-        '> ' +
-        gettextCatalog.getString(
-          'Relax the real-to-integer conversion check (-Wno-REALCVT)'
-        ) +
-        '</label></div>' +
-        '<div class="checkbox"><label>' +
-        '<input type="checkbox" id="pref-relax-io"' +
-        (verify.relaxIoPrimitives ? ' checked' : '') +
-        '> ' +
-        gettextCatalog.getString(
-          'Relax the FPGA I/O primitive checks (SB_IO / TRELLIS_IO)'
-        ) +
-        '</label></div>' +
-        '</div>' +
-        '<div class="tab-content" data-content="build">' +
-        noOpts +
-        '</div>' +
-        '<div class="tab-content" data-content="upload">' +
-        noOpts +
-        '</div>' +
+        scopePane('global', true) +
+        scopePane('project', false) +
         '</div>';
 
       alertify
         .preferencesDialog(content)
         .set('title', gettextCatalog.getString('Preferences'));
 
-      //-- Wire tab switching (same behavior as the code-block editor tabs),
-      //-- scoped to this dialog so it does not depend on / collide with the
-      //-- editor's global handler.
+      //-- Two-level tab switching, scoped to this dialog. Top tabs toggle the
+      //-- whole scope pane; sub-tabs toggle contents WITHIN their scope pane.
       setTimeout(function () {
         var $d = $('.preferences-dialog');
-        $d.find('.tabs .tab-item').on('click', function () {
-          var selectedTab = $(this).attr('data-tab');
-          $d.find('.tabs .tab-item').removeClass('active');
+        $d.find('.top-tabs .tab-item').on('click', function () {
+          var scope = $(this).attr('data-scope');
+          $d.find('.top-tabs .tab-item').removeClass('active');
           $(this).addClass('active');
-          $d.find('.tab-content').removeClass('active');
-          $d.find('.tab-content[data-content="' + selectedTab + '"]').addClass(
+          $d.find('.scope-content').removeClass('active');
+          $d.find('.scope-content[data-scope="' + scope + '"]').addClass(
             'active'
           );
+        });
+        $d.find('.sub-tabs .tab-item').on('click', function () {
+          var $pane = $(this).closest('.scope-content');
+          var tab = $(this).attr('data-tab');
+          $pane.find('.sub-tabs .tab-item').removeClass('active');
+          $(this).addClass('active');
+          $pane.find('.tab-content').removeClass('active');
+          $pane
+            .find('.tab-content[data-content="' + tab + '"]')
+            .addClass('active');
         });
       }, 50);
     };

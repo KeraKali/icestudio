@@ -2912,3 +2912,30 @@ msgstr "Módulo {{name}} exportado"
 
 msgid "Relax the FPGA I/O primitive checks (SB_IO / TRELLIS_IO)"
 msgstr "Relajar las comprobaciones de las primitivas de E/S de la FPGA (SB_IO / TRELLIS_IO)"
+
+msgid "Yosys options (synthesis)"
+msgstr "Opciones de Yosys (síntesis)"
+
+msgid "Nextpnr options (place & route)"
+msgstr "Opciones de Nextpnr (emplazado y rutado)"
+
+msgid "Extra flags for yosys, space- or line-separated (e.g. -abc9 -nowidelut)"
+msgstr "Flags extra para yosys, separados por espacios o líneas (p. ej. -abc9 -nowidelut)"
+
+msgid "Extra flags for nextpnr, space- or line-separated (e.g. --seed 2 --timing-allow-fail)"
+msgstr "Flags extra para nextpnr, separados por espacios o líneas (p. ej. --seed 2 --timing-allow-fail)"
+
+msgid "Cleaned: "
+msgstr "Limpiado: "
+
+msgid "Running {{cmd}} in a terminal..."
+msgstr "Ejecutando {{cmd}} en un terminal..."
+
+msgid "Global"
+msgstr "Global"
+
+msgid "Project"
+msgstr "Proyecto"
+
+msgid "Override globals"
+msgstr "Ignorar globales"
