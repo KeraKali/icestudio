@@ -18,6 +18,7 @@
   },
   "commands": {
     "upload": [
+      "{APIO_CMD} build",
       "{APIO_CMD} raw -- openFPGALoader -c ft232 --freq 30000000 -v --file-type bin \"{BITSTREAM}\""
     ]
   }
