@@ -781,6 +781,8 @@ angular
                   block.type === blocks.BASIC_INPUT &&
                   !block.data.range &&
                   !block.data.virtual &&
+                  block.data.pins &&
+                  block.data.pins.length &&
                   initPort.pin === block.data.pins[0].value
                 ) {
                   found = true;

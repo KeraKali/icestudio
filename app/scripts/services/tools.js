@@ -335,72 +335,87 @@ angular
       //-----------------------------------------------------------------------
 
       function generateCode(cmd) {
-        return new Promise(function (resolve) {
+        return new Promise(function (resolve, reject) {
+          //-- snapshot the project, then update() so the compiler sees the
+          //-- CURRENT graph (which, inside a submodule, is that submodule).
+          //-- restoreSnapshot MUST run even if the compile throws, otherwise
+          //-- the shared project keeps the submodule graph in place and the
+          //-- root design gets corrupted (navigating back then shows the
+          //-- submodule as the top-level design). Hence the try/finally.
           project.snapshot();
-          project.update();
-          var opt = {
-            datetime: false,
-            boardRules: profile.get('boardRules'),
-          };
-          if (opt.boardRules) {
-            opt.initPorts = compiler.getInitPorts(project.get());
-            opt.initPins = compiler.getInitPins(project.get());
-          }
+          try {
+            project.update();
+            var opt = {
+              datetime: false,
+              boardRules: profile.get('boardRules'),
+            };
+            if (opt.boardRules) {
+              opt.initPorts = compiler.getInitPorts(project.get());
+              opt.initPins = compiler.getInitPins(project.get());
+            }
 
-          // Verilog file
-          var verilogFile = compiler.generate('verilog', project.get(), opt)[0];
-          nodeFs.writeFileSync(
-            nodePath.join(common.BUILD_DIR, verilogFile.name),
-            verilogFile.content,
-            'utf8'
-          );
-
-          if (cmd.indexOf('lint') > -1) {
-            //only verification
-            console.log('ONLY VERIFY');
-          } else {
-            //-- Select the constraint format from the board architecture:
-            //--   ecp5 -> LPF, gowin -> CST, xc7 (openXC7) -> XDC,
-            //--   otherwise (ice40...) -> PCF
-            var archName = common.selectedBoard.info.arch;
-            var constraintType =
-              archName === 'ecp5'
-                ? 'lpf'
-                : archName === 'gowin'
-                  ? 'cst'
-                  : archName === 'xc7'
-                    ? 'xdc'
-                    : 'pcf';
-            var constraintFile = compiler.generate(
-              constraintType,
+            // Verilog file
+            var verilogFile = compiler.generate(
+              'verilog',
               project.get(),
               opt
             )[0];
             nodeFs.writeFileSync(
-              nodePath.join(common.BUILD_DIR, constraintFile.name),
-              constraintFile.content,
+              nodePath.join(common.BUILD_DIR, verilogFile.name),
+              verilogFile.content,
               'utf8'
             );
-          }
 
-          // List files
-          var listFiles = compiler.generate('list', project.get());
-          for (var i in listFiles) {
-            var listFile = listFiles[i];
+            if (cmd.indexOf('lint') > -1) {
+              //only verification
+              console.log('ONLY VERIFY');
+            } else {
+              //-- Select the constraint format from the board architecture:
+              //--   ecp5 -> LPF, gowin -> CST, xc7 (openXC7) -> XDC,
+              //--   otherwise (ice40...) -> PCF
+              var archName = common.selectedBoard.info.arch;
+              var constraintType =
+                archName === 'ecp5'
+                  ? 'lpf'
+                  : archName === 'gowin'
+                    ? 'cst'
+                    : archName === 'xc7'
+                      ? 'xdc'
+                      : 'pcf';
+              var constraintFile = compiler.generate(
+                constraintType,
+                project.get(),
+                opt
+              )[0];
+              nodeFs.writeFileSync(
+                nodePath.join(common.BUILD_DIR, constraintFile.name),
+                constraintFile.content,
+                'utf8'
+              );
+            }
 
-            nodeFs.writeFileSync(
-              nodePath.join(common.BUILD_DIR, listFile.name),
-              listFile.content,
-              'utf8'
-            );
+            // List files
+            var listFiles = compiler.generate('list', project.get());
+            for (var i in listFiles) {
+              var listFile = listFiles[i];
+
+              nodeFs.writeFileSync(
+                nodePath.join(common.BUILD_DIR, listFile.name),
+                listFile.content,
+                'utf8'
+              );
+            }
+            resolve({
+              code: verilogFile.content,
+              internalResources: listFiles.map(function (res) {
+                return res.name;
+              }),
+            });
+          } catch (e) {
+            reject(e);
+          } finally {
+            project.restoreSnapshot();
           }
-          project.restoreSnapshot();
-          resolve({
-            code: verilogFile.content,
-            internalResources: listFiles.map(function (res) {
-              return res.name;
-            }),
-          });
         });
       }
 
