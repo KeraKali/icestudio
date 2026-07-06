@@ -752,6 +752,14 @@ angular
         content.push(
           '  <input id="input-open-svg" type="file" accept=".svg" class="hidden">'
         );
+        //-- Bound the icon preview: keep the uploaded SVG's aspect ratio
+        //-- (width/height auto) but cap it so it never overflows the dialog.
+        content.push(
+          '<style>#preview-svg-wrapper{display:flex;align-items:center;' +
+            'justify-content:center;margin:4px 0}' +
+            '#preview-svg-wrapper svg,#preview-svg-wrapper img{' +
+            'max-width:160px;max-height:120px;width:auto;height:auto}</style>'
+        );
         content.push('  <div>');
         if (image) {
           let embeded = '<div id="preview-svg-wrapper">';
@@ -868,31 +876,17 @@ angular
                   ],
                 })
                 .then(function (handle) {
-                  return handle
-                    .createWritable()
-                    .then(function (writable) {
+                  //-- Write the SVG THROUGH the writable stream, then close.
+                  //-- The previous code closed the writable WITHOUT writing
+                  //-- (truncating the file to 0 bytes) and relied on
+                  //-- file.path + nodeFs.writeFile — but File System Access
+                  //-- handles do not expose .path, so nothing was written and
+                  //-- the saved .svg came out empty.
+                  return handle.createWritable().then(function (writable) {
+                    return writable.write(decodeURI(image)).then(function () {
                       return writable.close();
-                    })
-                    .then(function () {
-                      return handle.getFile();
-                    })
-                    .then(function (file) {
-                      var filepath = file.path;
-                      if (filepath) {
-                        if (!filepath.endsWith('.svg')) {
-                          filepath += '.svg';
-                        }
-                        nodeFs.writeFile(
-                          filepath,
-                          decodeURI(image),
-                          function (err) {
-                            if (err) {
-                              throw err;
-                            }
-                          }
-                        );
-                      }
                     });
+                  });
                 })
                 .catch(function (err) {
                   if (err.name !== 'AbortError') {
