@@ -2918,3 +2918,19 @@ msgstr "Project"
 
 msgid "Override globals"
 msgstr "Override globals"
+
+msgid "Allow combinational loops (verify + place & route)"
+msgstr "Allow combinational loops (verify + place & route)"
+
+msgid ""
+"This is a combinational (logic) loop. It disappears if you enable \"Allow "
+"combinational loops\" under Tools → Preferences → Verify."
+msgstr ""
+"This is a combinational (logic) loop. It disappears if you enable \"Allow "
+"combinational loops\" under Tools → Preferences → Verify."
+
+msgid "Verilator options (verify)"
+msgstr "Verilator options (verify)"
+
+msgid "Extra flags for Verilator, space- or line-separated (e.g. -Wno-WIDTH -Wno-CASEINCOMPLETE)"
+msgstr "Extra flags for Verilator, space- or line-separated (e.g. -Wno-WIDTH -Wno-CASEINCOMPLETE)"

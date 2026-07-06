@@ -825,8 +825,16 @@ angular
         if (build.yosysFlags) {
           ini += 'yosys-extra-options = ' + build.yosysFlags + '\n';
         }
-        if (build.nextpnrFlags) {
-          ini += 'nextpnr-extra-options = ' + build.nextpnrFlags + '\n';
+        //-- "Allow combinational loops" also covers place & route: nextpnr
+        //-- errors on a comb loop during timing analysis unless --ignore-loops
+        //-- is passed. Same toggle as the Verilator UNOPTFLAT relaxation, so
+        //-- one checkbox allows logic loops end to end (verify + build).
+        var nextpnr = build.nextpnrFlags;
+        if (effectiveVerify().allowLogicLoops) {
+          nextpnr = normalizeFlags(nextpnr + ' --ignore-loops');
+        }
+        if (nextpnr) {
+          ini += 'nextpnr-extra-options = ' + nextpnr + '\n';
         }
         return ini;
       }
@@ -873,11 +881,15 @@ angular
           return {
             relaxRealToInt: !!p.relaxRealToInt,
             relaxIoPrimitives: !!p.relaxIoPrimitives,
+            allowLogicLoops: !!p.allowLogicLoops,
+            verilatorFlags: normalizeFlags(p.verilatorFlags),
           };
         }
         return {
           relaxRealToInt: !!g.relaxRealToInt || !!p.relaxRealToInt,
           relaxIoPrimitives: !!g.relaxIoPrimitives || !!p.relaxIoPrimitives,
+          allowLogicLoops: !!g.allowLogicLoops || !!p.allowLogicLoops,
+          verilatorFlags: joinFlags(g.verilatorFlags, p.verilatorFlags),
         };
       }
 
@@ -971,6 +983,18 @@ angular
           //-- conversion), benign for blocks that compute a count as real
           //-- (e.g. $ceil) and truncate it to an integer output.
           opts.push('-Wno-REALCVT');
+        }
+        if (verify.allowLogicLoops) {
+          //-- Allow combinational (logic) loops: silence Verilator's
+          //-- UNOPTFLAT "circular combinational logic" warning. Off by
+          //-- default (a comb loop is usually a design bug), but legitimate
+          //-- for e.g. an async latch built from gates or a ring oscillator.
+          opts.push('-Wno-UNOPTFLAT');
+        }
+        if (verify.verilatorFlags) {
+          //-- Free-form extra Verilator flags typed by the user (Verify tab),
+          //-- already flattened to a single line by effectiveVerify().
+          opts.push(verify.verilatorFlags);
         }
         return opts;
       }

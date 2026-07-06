@@ -2939,3 +2939,19 @@ msgstr "Proyecto"
 
 msgid "Override globals"
 msgstr "Ignorar globales"
+
+msgid "Allow combinational loops (verify + place & route)"
+msgstr "Permitir bucles combinacionales (verificar + emplazado y rutado)"
+
+msgid ""
+"This is a combinational (logic) loop. It disappears if you enable \"Allow "
+"combinational loops\" under Tools → Preferences → Verify."
+msgstr ""
+"Esto es un bucle combinacional (lógico). Desaparece si activas \"Permitir "
+"bucles combinacionales\" en Herramientas → Preferencias → Verificar."
+
+msgid "Verilator options (verify)"
+msgstr "Opciones de Verilator (verificar)"
+
+msgid "Extra flags for Verilator, space- or line-separated (e.g. -Wno-WIDTH -Wno-CASEINCOMPLETE)"
+msgstr "Flags extra para Verilator, separados por espacios o líneas (p. ej. -Wno-WIDTH -Wno-CASEINCOMPLETE)"

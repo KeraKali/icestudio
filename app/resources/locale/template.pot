@@ -2724,3 +2724,21 @@ msgstr ""
 #: app/scripts/controllers/menu.js
 msgid "Override globals"
 msgstr ""
+
+#: app/scripts/controllers/menu.js
+msgid "Allow combinational loops (verify + place & route)"
+msgstr ""
+
+#: app/scripts/services/outputConsole.js
+msgid ""
+"This is a combinational (logic) loop. It disappears if you enable \"Allow "
+"combinational loops\" under Tools → Preferences → Verify."
+msgstr ""
+
+#: app/scripts/controllers/menu.js
+msgid "Verilator options (verify)"
+msgstr ""
+
+#: app/scripts/controllers/menu.js
+msgid "Extra flags for Verilator, space- or line-separated (e.g. -Wno-WIDTH -Wno-CASEINCOMPLETE)"
+msgstr ""

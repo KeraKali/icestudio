@@ -83,6 +83,20 @@ angular.module('icestudio').service('outputConsole', function (gettextCatalog) {
         event: 'preferences.open',
         payload: { tab: 'verify' },
       },
+      {
+        //-- UNOPTFLAT = a combinational (logic) feedback loop. Match the real
+        //-- Verilator message, not the echoed flag.
+        test: /%(Warning|Error)-UNOPTFLAT|Circular combinational logic/i,
+        when: function () {
+          return !verifyPref('allowLogicLoops');
+        },
+        message: gettextCatalog.getString(
+          'This is a combinational (logic) loop. It disappears if you enable "Allow combinational loops" under Tools → Preferences → Verify.'
+        ),
+        linkText: gettextCatalog.getString('Open Preferences'),
+        event: 'preferences.open',
+        payload: { tab: 'verify' },
+      },
     ];
   }
 

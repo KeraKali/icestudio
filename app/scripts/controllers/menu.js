@@ -934,6 +934,8 @@ angular.module('icestudio').controller(
       prefs.verify = prefs.verify || {};
       prefs.verify.relaxRealToInt = $('#pref-relax-realcvt').is(':checked');
       prefs.verify.relaxIoPrimitives = $('#pref-relax-io').is(':checked');
+      prefs.verify.allowLogicLoops = $('#pref-allow-loops').is(':checked');
+      prefs.verify.verilatorFlags = $('#pref-verilator-flags').val() || '';
       //-- Build: free-form extra flags for yosys (synthesis) and nextpnr
       //-- (place & route). Stored verbatim (the user's line layout is kept);
       //-- they are flattened to a single line when written into apio.ini.
@@ -952,6 +954,8 @@ angular.module('icestudio').controller(
         override: $('#pref-proj-verify-override').is(':checked'),
         relaxRealToInt: $('#pref-proj-relax-realcvt').is(':checked'),
         relaxIoPrimitives: $('#pref-proj-relax-io').is(':checked'),
+        allowLogicLoops: $('#pref-proj-allow-loops').is(':checked'),
+        verilatorFlags: $('#pref-proj-verilator-flags').val() || '',
       };
       settings.tools.build = {
         override: $('#pref-proj-build-override').is(':checked'),
@@ -1040,6 +1044,30 @@ angular.module('icestudio').controller(
             'Relax the FPGA I/O primitive checks (SB_IO / TRELLIS_IO)'
           ) +
           '</label></div>' +
+          '<div class="checkbox"><label>' +
+          '<input type="checkbox" id="' +
+          id +
+          'allow-loops"' +
+          (v.allowLogicLoops ? ' checked' : '') +
+          '> ' +
+          gettextCatalog.getString(
+            'Allow combinational loops (verify + place & route)'
+          ) +
+          '</label></div>' +
+          '<div class="form-group"><label>' +
+          gettextCatalog.getString('Verilator options (verify)') +
+          '</label>' +
+          '<textarea id="' +
+          id +
+          'verilator-flags" class="ajs-input" rows="3" ' +
+          'style="width:100%;margin-top:4px;font-family:monospace;" ' +
+          'placeholder="' +
+          gettextCatalog.getString(
+            'Extra flags for Verilator, space- or line-separated (e.g. -Wno-WIDTH -Wno-CASEINCOMPLETE)'
+          ) +
+          '">' +
+          escHtml(v.verilatorFlags || '') +
+          '</textarea></div>' +
           '</div>';
         var buildPane =
           '<div class="tab-content" data-content="build">' +

@@ -64,6 +64,8 @@ angular
               override: false,
               relaxRealToInt: false,
               relaxIoPrimitives: false,
+              allowLogicLoops: false,
+              verilatorFlags: '',
             },
             build: {
               override: false,
