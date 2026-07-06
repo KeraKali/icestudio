@@ -780,6 +780,7 @@ module.exports = function (grunt) {
             APP_RESOURCES + '/plugins/iceHub/js/*.js',
             APP_RESOURCES + '/plugins/iceTutorial/js/*.js',
             APP_RESOURCES + '/plugins/boardEditor/js/*.js',
+            APP_RESOURCES + '/plugins/apioShell/js/*.js',
           ],
         },
       },

@@ -1,11 +1,12 @@
 /* jshint esversion: 6 */
 /* global Terminal, pluginRoot, pluginHost, pluginUUID, registerEvents,
-          iceStudio, appEnv, alertify, angular */
+          iceStudio, appEnv, alertify, angular, nw */
 
 // ─── Node modules (available in NW.js embedded context) ─────────────────────
 var nodeChildProcess = require('child_process');
 var nodeFs = require('fs');
 var nodePath = require('path');
+var nodeOs = require('os');
 
 // ─── State ──────────────────────────────────────────────────────────────────
 var term = null;
@@ -782,6 +783,16 @@ function executeCommand(line) {
         spawnProcess(toolPath, args, cwd);
       });
     });
+  } else if (cmd === 'graph') {
+    // 'graph' is a design command, but apio then hands the generated file to
+    // the OS default viewer, which on some setups routes it back to the
+    // Icestudio window and pops the "save/close design" prompt. Wrap it: force
+    // --no-viewer and open the result ourselves in an Icestudio window.
+    requireSavedProject(function () {
+      ensureBuildFiles(function () {
+        runGraphCommand(args);
+      });
+    });
   } else if (APIO_DESIGN_COMMANDS.indexOf(cmd) >= 0) {
     // Design commands operate on the compiled circuit: ensure the project is
     // saved and the build files exist before handing off to apio.
@@ -1229,20 +1240,21 @@ function compileDesign(callback) {
 }
 
 function ensureBuildFiles(callback) {
-  var mainV = nodePath.join(buildDir, 'main.v');
-  if (nodeFs.existsSync(mainV)) {
-    callback();
-    return;
-  }
-  term.writeln(INFO_COLOR + 'Generating design files...' + RESET_COLOR);
+  //-- Always regenerate before an apio/tool command so the shell reflects the
+  //-- CURRENT Icestudio design AND Tools > Preferences. The synthesis options
+  //-- (yosys/nextpnr/verilator-extra-options) live in apio.ini, which is
+  //-- (re)written here; skipping this when main.v happened to exist left apio
+  //-- running yosys/nextpnr with a stale apio.ini (missing the configured
+  //-- flags) and an outdated design. compileDesign is cheap and writeApioIni
+  //-- only rewrites apio.ini when its content changed, so apio's build cache
+  //-- is preserved when nothing actually changed.
   compileDesign(function () {
-    term.writeln(INFO_COLOR + 'Design files generated.' + RESET_COLOR);
     callback();
   });
 }
 
 // ─── APIO COMMAND EXECUTION ─────────────────────────────────────────────────
-function runApioCommand(subcmd, args) {
+function runApioCommand(subcmd, args, onDone) {
   // Build the full command: APIO_CMD <subcmd> [args]
   var fullArgs = [subcmd].concat(args);
 
@@ -1256,11 +1268,222 @@ function runApioCommand(subcmd, args) {
     fullArgs = fullArgs.concat(['-p', '"' + cwd + '"']);
   }
 
-  spawnProcess(apioCmd, fullArgs, cwd);
+  spawnProcess(apioCmd, fullArgs, cwd, onDone);
+}
+
+// ─── GRAPH WRAPPER ──────────────────────────────────────────────────────────
+// Translate a UI string via Angular's gettextCatalog (identity fallback).
+function tr(str) {
+  try {
+    var gc = angular.element(document.body).injector().get('gettextCatalog');
+    if (gc && typeof gc.getString === 'function') {
+      return gc.getString(str);
+    }
+  } catch (e) {
+    /* gettext not available: fall through */
+  }
+  return str;
+}
+
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// Run 'apio graph' but suppress apio's OS-level viewer and open the result in
+// an Icestudio-owned window. User options (--pdf/--png, -t module, -e env, -v,
+// ...) pass through untouched; an explicit -n/--no-viewer is respected (we then
+// open nothing either).
+function runGraphCommand(args) {
+  var userNoViewer =
+    args.indexOf('-n') >= 0 || args.indexOf('--no-viewer') >= 0;
+
+  var ext = 'svg';
+  if (args.indexOf('--pdf') >= 0) {
+    ext = 'pdf';
+  } else if (args.indexOf('--png') >= 0) {
+    ext = 'png';
+  }
+
+  var env = 'default';
+  var ei = args.indexOf('-e');
+  if (ei < 0) {
+    ei = args.indexOf('--env');
+  }
+  if (ei >= 0 && args[ei + 1]) {
+    env = args[ei + 1];
+  }
+
+  var apioArgs = args.slice();
+  if (!userNoViewer) {
+    apioArgs.push('--no-viewer');
+  }
+
+  //-- apio writes to <project>/_build/<env>/graph.<ext>; runApioCommand passes
+  //-- -p cwd, so the project dir is cwd.
+  var outFile = nodePath.join(cwd, '_build', env, 'graph.' + ext);
+
+  runApioCommand('graph', apioArgs, function (code) {
+    if (userNoViewer || code !== 0) {
+      return;
+    }
+    if (!nodeFs.existsSync(outFile)) {
+      term.writeln(
+        ERROR_COLOR + 'Graph file not found: ' + outFile + RESET_COLOR
+      );
+      return;
+    }
+    openGraphWindow(outFile, ext);
+  });
+}
+
+// Open a generated graph file in a dedicated Icestudio (NW.js) window with a
+// floating, internationalized Download button. The graph and the download link
+// are embedded as a single data URI so the window is self-contained (no OS
+// handoff, no node access needed in the child window).
+function openGraphWindow(file, ext) {
+  try {
+    var mime =
+      ext === 'pdf'
+        ? 'application/pdf'
+        : ext === 'png'
+          ? 'image/png'
+          : 'image/svg+xml';
+    var buf = nodeFs.readFileSync(file);
+    var dataUri = 'data:' + mime + ';base64,' + buf.toString('base64');
+
+    var title = escHtml(tr('Design graph'));
+    var dl =
+      '<a id="ice-dl" download="graph.' +
+      ext +
+      '" href="' +
+      dataUri +
+      '">⬇ ' +
+      escHtml(tr('Download')) +
+      '</a>';
+
+    var css =
+      'html,body{margin:0;height:100%;background:#1e1e1e;overflow:hidden;' +
+      'font-family:system-ui,sans-serif;user-select:none}' +
+      '#ice-vp{position:fixed;inset:0;overflow:hidden;cursor:grab}' +
+      '#ice-stage{position:absolute;top:0;left:0;transform-origin:0 0;' +
+      'will-change:transform}' +
+      '#ice-stage svg,#ice-stage img{display:block;-webkit-user-drag:none}' +
+      '#ice-tb{position:fixed;top:12px;right:14px;z-index:99999;display:flex;' +
+      'gap:6px;align-items:center}' +
+      '#ice-tb button{width:34px;height:34px;border:none;border-radius:7px;' +
+      'background:#2b2b3a;color:#fff;font-size:17px;line-height:1;' +
+      'cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.4)}' +
+      '#ice-tb button:hover{background:#3a3a4e}' +
+      '#ice-dl{padding:0 14px;height:34px;display:inline-flex;' +
+      'align-items:center;border-radius:7px;text-decoration:none;' +
+      'background:#0a7cff;color:#fff;font:600 13px system-ui,sans-serif;' +
+      'box-shadow:0 2px 8px rgba(0,0,0,.4)}' +
+      '#ice-dl:hover{background:#0966d6}';
+
+    var body, script;
+    if (ext === 'pdf') {
+      //-- PDF: Chromium's built-in viewer already provides zoom/pan.
+      body =
+        '<div id="ice-tb">' +
+        dl +
+        '</div><embed type="application/pdf" ' +
+        'style="position:fixed;inset:0;width:100%;height:100%;border:0" src="' +
+        dataUri +
+        '">';
+      script = '';
+    } else {
+      //-- SVG is inlined (vector → crisp at any zoom); PNG uses <img>. Both
+      //-- get custom pan (drag) + zoom (wheel/buttons), fit-to-window on load.
+      var inner =
+        ext === 'png'
+          ? '<img id="ice-g" alt="graph" src="' + dataUri + '">'
+          : buf.toString('utf8').replace(/^[\s\S]*?<svg/i, '<svg');
+      body =
+        '<div id="ice-tb">' +
+        '<button id="ice-zin" title="' +
+        escHtml(tr('Zoom in')) +
+        '">+</button>' +
+        '<button id="ice-zout" title="' +
+        escHtml(tr('Zoom out')) +
+        '">−</button>' +
+        '<button id="ice-fit" title="' +
+        escHtml(tr('Fit to window')) +
+        '">⤢</button>' +
+        dl +
+        '</div><div id="ice-vp"><div id="ice-stage">' +
+        inner +
+        '</div></div>';
+      script =
+        '<script>(function(){' +
+        'var vp=document.getElementById("ice-vp"),' +
+        'stage=document.getElementById("ice-stage"),' +
+        'el=stage.querySelector("svg")||stage.querySelector("img");' +
+        'var scale=1,tx=0,ty=0,iw=0,ih=0;' +
+        'function apply(){stage.style.transform="translate("+tx+"px,"+ty+"px) scale("+scale+")";}' +
+        'function fit(){if(!iw||!ih)return;var vw=vp.clientWidth,vh=vp.clientHeight;' +
+        'scale=Math.min(vw/iw,vh/ih)*0.96;tx=(vw-iw*scale)/2;ty=(vh-ih*scale)/2;apply();}' +
+        'function zoomAt(cx,cy,f){tx=cx-(cx-tx)*f;ty=cy-(cy-ty)*f;scale*=f;apply();}' +
+        'function ready(){' +
+        'if(el.tagName.toLowerCase()==="img"){iw=el.naturalWidth;ih=el.naturalHeight;}' +
+        'else{var vb=el.viewBox&&el.viewBox.baseVal;' +
+        'if(vb&&vb.width){iw=vb.width;ih=vb.height;}else{var b=el.getBBox();iw=b.width;ih=b.height;}' +
+        'el.removeAttribute("width");el.removeAttribute("height");' +
+        'el.setAttribute("width",iw);el.setAttribute("height",ih);}fit();}' +
+        'vp.addEventListener("wheel",function(e){e.preventDefault();var r=vp.getBoundingClientRect();' +
+        'zoomAt(e.clientX-r.left,e.clientY-r.top,e.deltaY<0?1.1:1/1.1);},{passive:false});' +
+        'var drag=false,sx,sy;' +
+        'vp.addEventListener("mousedown",function(e){drag=true;sx=e.clientX-tx;sy=e.clientY-ty;' +
+        'vp.style.cursor="grabbing";e.preventDefault();});' +
+        'window.addEventListener("mousemove",function(e){if(!drag)return;tx=e.clientX-sx;ty=e.clientY-sy;apply();});' +
+        'window.addEventListener("mouseup",function(){drag=false;vp.style.cursor="grab";});' +
+        'vp.addEventListener("dblclick",fit);window.addEventListener("resize",fit);' +
+        'document.getElementById("ice-zin").addEventListener("click",function(){zoomAt(vp.clientWidth/2,vp.clientHeight/2,1.25);});' +
+        'document.getElementById("ice-zout").addEventListener("click",function(){zoomAt(vp.clientWidth/2,vp.clientHeight/2,0.8);});' +
+        'document.getElementById("ice-fit").addEventListener("click",fit);' +
+        'if(el.tagName.toLowerCase()==="img"&&!(el.complete&&el.naturalWidth)){el.onload=ready;}else{ready();}' +
+        '})();<\/script>';
+    }
+
+    var html =
+      '<!doctype html><html><head><meta charset="utf-8"><title>' +
+      title +
+      '</title><style>' +
+      css +
+      '</style></head><body>' +
+      body +
+      script +
+      '</body></html>';
+
+    var htmlPath = nodePath.join(nodeOs.tmpdir(), 'icestudio-graph-view.html');
+    nodeFs.writeFileSync(htmlPath, html, 'utf8');
+
+    var p = htmlPath.replace(/\\/g, '/');
+    var fileUrl = encodeURI('file://' + (p.charAt(0) === '/' ? '' : '/') + p);
+
+    nw.Window.open(
+      fileUrl,
+      {
+        title: tr('Design graph'),
+        width: 1000,
+        height: 720,
+        position: 'center',
+        focus: true,
+      },
+      function () {}
+    );
+  } catch (e) {
+    term.writeln(
+      ERROR_COLOR + 'Cannot open graph viewer: ' + e.message + RESET_COLOR
+    );
+  }
 }
 
 // ─── PROCESS SPAWNING ───────────────────────────────────────────────────────
-function spawnProcess(cmd, args, workDir) {
+function spawnProcess(cmd, args, workDir, onDone) {
   var spawnEnv = Object.assign({}, process.env, {
     APIO_HOME: apioHome,
     FORCE_COLOR: '1',
@@ -1311,6 +1534,9 @@ function spawnProcess(cmd, args, workDir) {
       }
       notifyIfMinimized();
       showPrompt();
+      if (typeof onDone === 'function') {
+        onDone(code);
+      }
     });
 
     proc.on('error', function (err) {

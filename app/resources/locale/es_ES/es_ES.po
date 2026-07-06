@@ -2955,3 +2955,18 @@ msgstr "Opciones de Verilator (verificar)"
 
 msgid "Extra flags for Verilator, space- or line-separated (e.g. -Wno-WIDTH -Wno-CASEINCOMPLETE)"
 msgstr "Flags extra para Verilator, separados por espacios o líneas (p. ej. -Wno-WIDTH -Wno-CASEINCOMPLETE)"
+
+msgid "Download"
+msgstr "Descargar"
+
+msgid "Design graph"
+msgstr "Diagrama del diseño"
+
+msgid "Zoom in"
+msgstr "Acercar"
+
+msgid "Zoom out"
+msgstr "Alejar"
+
+msgid "Fit to window"
+msgstr "Ajustar a la ventana"

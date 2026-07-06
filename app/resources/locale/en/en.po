@@ -2934,3 +2934,18 @@ msgstr "Verilator options (verify)"
 
 msgid "Extra flags for Verilator, space- or line-separated (e.g. -Wno-WIDTH -Wno-CASEINCOMPLETE)"
 msgstr "Extra flags for Verilator, space- or line-separated (e.g. -Wno-WIDTH -Wno-CASEINCOMPLETE)"
+
+msgid "Download"
+msgstr "Download"
+
+msgid "Design graph"
+msgstr "Design graph"
+
+msgid "Zoom in"
+msgstr "Zoom in"
+
+msgid "Zoom out"
+msgstr "Zoom out"
+
+msgid "Fit to window"
+msgstr "Fit to window"

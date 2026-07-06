@@ -2742,3 +2742,23 @@ msgstr ""
 #: app/scripts/controllers/menu.js
 msgid "Extra flags for Verilator, space- or line-separated (e.g. -Wno-WIDTH -Wno-CASEINCOMPLETE)"
 msgstr ""
+
+#: app/resources/plugins/apioShell/js/apioShell.js
+msgid "Download"
+msgstr ""
+
+#: app/resources/plugins/apioShell/js/apioShell.js
+msgid "Design graph"
+msgstr ""
+
+#: app/resources/plugins/apioShell/js/apioShell.js
+msgid "Zoom in"
+msgstr ""
+
+#: app/resources/plugins/apioShell/js/apioShell.js
+msgid "Zoom out"
+msgstr ""
+
+#: app/resources/plugins/apioShell/js/apioShell.js
+msgid "Fit to window"
+msgstr ""
