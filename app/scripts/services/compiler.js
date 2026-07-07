@@ -318,12 +318,12 @@ angular
             block.data.inout === true
           ) {
             ports.inout.push({
-              name: utils.blockSignalName(block),
+              name: utils.blockSignalName(block, graph),
               range: block.data.range ? block.data.range : '',
             });
           } else {
             ports.in.push({
-              name: utils.blockSignalName(block),
+              name: utils.blockSignalName(block, graph),
               range: block.data.range ? block.data.range : '',
             });
           }
@@ -333,12 +333,12 @@ angular
             block.data.inout === true
           ) {
             ports.inout.push({
-              name: utils.blockSignalName(block),
+              name: utils.blockSignalName(block, graph),
               range: block.data.range ? block.data.range : '',
             });
           } else {
             ports.out.push({
-              name: utils.blockSignalName(block),
+              name: utils.blockSignalName(block, graph),
               range: block.data.range ? block.data.range : '',
             });
           }
@@ -481,7 +481,11 @@ angular
           if (block.type === blocks.BASIC_INPUT) {
             if (wire.source.block === block.id) {
               connections.assign.push(
-                'assign w' + w + ' = ' + utils.blockSignalName(block) + ';'
+                'assign w' +
+                  w +
+                  ' = ' +
+                  utils.blockSignalName(block, graph) +
+                  ';'
               );
             }
           } else if (block.type === blocks.BASIC_OUTPUT) {
@@ -493,7 +497,11 @@ angular
                 // connections.assign.push('assign ' + digestId(block.id) + ' = p' + w + ';');
               } else {
                 connections.assign.push(
-                  'assign ' + utils.blockSignalName(block) + ' = w' + w + ';'
+                  'assign ' +
+                    utils.blockSignalName(block, graph) +
+                    ' = w' +
+                    w +
+                    ';'
                 );
               }
             }
@@ -629,12 +637,19 @@ angular
             instance += ' #(\n' + params.join(',\n') + '\n)';
           }
 
-          //-- Instance name: readable label + digest ('Contador_v1a2b3')
-          //-- when the block type has a package name, plain digest otherwise.
+          //-- Instance name: '<label>_<digest>'. The label is the user's
+          //-- per-instance custom name (block.data.name — settable on any
+          //-- generic or code block; UI support pending, the compiler honors
+          //-- it already) or, as fallback for library blocks, the type's
+          //-- package name; plain digest when neither exists. Instance names
+          //-- only appear in generated code / VCD scopes / graph diagrams —
+          //-- the error mapping (normalizeCodeError) never parses them.
+          var customLabel = utils.normalizeVerilogName(
+            String((block.data && block.data.name) || '').trim()
+          );
+          var instLabel = customLabel || instanceLabel;
           instance +=
-            ' ' +
-            (instanceLabel ? instanceLabel + '_' : '') +
-            utils.digestId(block.id);
+            ' ' + (instLabel ? instLabel + '_' : '') + utils.digestId(block.id);
 
           //-- Ports
 
@@ -676,7 +691,7 @@ angular
                 ? findBlock(portName, dep.design.graph)
                 : null;
             portName = depIo
-              ? utils.blockSignalName(depIo)
+              ? utils.blockSignalName(depIo, dep.design.graph)
               : utils.digestId(portName);
           }
           if (portsNames.indexOf(portName) === -1) {
@@ -710,7 +725,8 @@ angular
 
       var i, j;
       var initPorts = [];
-      var blockArray = project.design.graph.blocks;
+      var graph = project.design.graph;
+      var blockArray = graph.blocks;
 
       // Find all not connected input ports:
       // - Code blocks
@@ -749,7 +765,8 @@ angular
       var i;
       var initPins = [];
       var usedPins = [];
-      var blockArray = project.design.graph.blocks;
+      var graph = project.design.graph;
+      var blockArray = graph.blocks;
 
       // Find all set output pins
       for (i in blockArray) {
@@ -785,7 +802,8 @@ angular
         code = '';
       opt = opt || {};
       if (project && project.design && project.design.graph) {
-        var blockArray = project.design.graph.blocks;
+        var graph = project.design.graph;
+        var blockArray = graph.blocks;
         var dependencies = project.dependencies;
 
         // Main module
@@ -954,7 +972,8 @@ angular
         pin,
         value,
         code = '';
-      var blockArray = project.design.graph.blocks;
+      var graph = project.design.graph;
+      var blockArray = graph.blocks;
       opt = opt || {};
 
       function xdcLine(port, pinValue) {
@@ -983,14 +1002,14 @@ angular
               pin = block.data.pins[p];
               value = block.data.virtual ? '' : pin.value;
               code += xdcLine(
-                utils.blockSignalName(block) + '[' + pin.index + ']',
+                utils.blockSignalName(block, graph) + '[' + pin.index + ']',
                 value
               );
             }
           } else if (block.data.pins.length > 0) {
             pin = block.data.pins[0];
             value = block.data.virtual ? '' : pin.value;
-            code += xdcLine(utils.blockSignalName(block), value);
+            code += xdcLine(utils.blockSignalName(block, graph), value);
           }
         }
       }
@@ -1052,7 +1071,8 @@ angular
         pin,
         value,
         code = '';
-      var blockArray = project.design.graph.blocks;
+      var graph = project.design.graph;
+      var blockArray = graph.blocks;
       opt = opt || {};
 
       for (i in blockArray) {
@@ -1066,7 +1086,7 @@ angular
               pin = block.data.pins[p];
               value = block.data.virtual ? '' : pin.value;
               code += 'set_io ';
-              code += utils.blockSignalName(block);
+              code += utils.blockSignalName(block, graph);
               code += '[' + pin.index + '] ';
               code += value;
               code += '\n';
@@ -1075,7 +1095,7 @@ angular
             pin = block.data.pins[0];
             value = block.data.virtual ? '' : pin.value;
             code += 'set_io ';
-            code += utils.blockSignalName(block);
+            code += utils.blockSignalName(block, graph);
             code += ' ';
             code += value;
             code += '\n';
@@ -1150,7 +1170,8 @@ angular
         pin,
         value,
         code = '';
-      var blockArray = project.design.graph.blocks;
+      var graph = project.design.graph;
+      var blockArray = graph.blocks;
       opt = opt || {};
 
       code += '# -- Board: ';
@@ -1172,13 +1193,13 @@ angular
               pin = block.data.pins[p];
               value = block.data.virtual ? '' : pin.value;
               code += 'LOCATE COMP "';
-              code += utils.blockSignalName(block);
+              code += utils.blockSignalName(block, graph);
               code += '[' + pin.index + ']" SITE "';
               code += value;
               code += '";\n';
 
               code += 'IOBUF PORT "';
-              code += utils.blockSignalName(block);
+              code += utils.blockSignalName(block, graph);
               code += '[' + pin.index + ']" ';
 
               //-- Get the pullmode property of the physical pin (its id is pin.value)
@@ -1198,13 +1219,13 @@ angular
             pin = block.data.pins[0];
             value = block.data.virtual ? '' : pin.value;
             code += 'LOCATE COMP "';
-            code += utils.blockSignalName(block);
+            code += utils.blockSignalName(block, graph);
             code += '" SITE "';
             code += value;
             code += '";\n';
 
             code += 'IOBUF PORT "';
-            code += utils.blockSignalName(block);
+            code += utils.blockSignalName(block, graph);
             code += '" ';
 
             //-- Get the pullmode property of the physical pin (its id is pin.value)
@@ -1237,7 +1258,8 @@ angular
         pin,
         value,
         code = '';
-      var blockArray = project.design.graph.blocks;
+      var graph = project.design.graph;
+      var blockArray = graph.blocks;
       opt = opt || {};
 
       code += '// -- Board: ';
@@ -1268,12 +1290,15 @@ angular
             for (var p in block.data.pins) {
               pin = block.data.pins[p];
               value = block.data.virtual ? '' : pin.value;
-              emit(utils.blockSignalName(block) + '[' + pin.index + ']', value);
+              emit(
+                utils.blockSignalName(block, graph) + '[' + pin.index + ']',
+                value
+              );
             }
           } else if (block.data.pins.length > 0) {
             pin = block.data.pins[0];
             value = block.data.virtual ? '' : pin.value;
-            emit(utils.blockSignalName(block), value);
+            emit(utils.blockSignalName(block, graph), value);
           }
         }
       }
@@ -1334,7 +1359,8 @@ angular
       var listFiles = [];
 
       if (project && project.design && project.design.graph) {
-        var blockArray = project.design.graph.blocks;
+        var graph = project.design.graph;
+        var blockArray = graph.blocks;
         var dependencies = project.dependencies;
 
         // Find in blocks
@@ -1554,14 +1580,16 @@ angular
           if (block.data.name) {
             pname = block.data.name.replace('@', '');
             input.push({
-              id: utils.blockSignalName(block),
+              id: utils.blockSignalName(block, graph),
               name: uniqueName(pname.replace(/ /g, '_')),
               range: block.data.range,
             });
           } else {
+            //-- 'in<k>' (not a bare number: 'reg 0;' is invalid Verilog),
+            //-- mirroring the positional port names of blockSignalName.
             input.push({
-              id: utils.blockSignalName(block),
-              name: uniqueName(inputUnnamed.toString()),
+              id: utils.blockSignalName(block, graph),
+              name: uniqueName('in' + inputUnnamed.toString()),
             });
             inputUnnamed += 1;
           }
@@ -1569,14 +1597,14 @@ angular
           if (block.data.name) {
             pname = block.data.name.replace('@', '');
             output.push({
-              id: utils.blockSignalName(block),
+              id: utils.blockSignalName(block, graph),
               name: uniqueName(pname.replace(/ /g, '_')),
               range: block.data.range,
             });
           } else {
             output.push({
-              id: utils.blockSignalName(block),
-              name: uniqueName(outputUnnamed.toString()),
+              id: utils.blockSignalName(block, graph),
+              name: uniqueName('out' + outputUnnamed.toString()),
             });
             outputUnnamed += 1;
           }

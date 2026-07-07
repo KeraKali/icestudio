@@ -1879,20 +1879,55 @@ angular
 
       //-- Human-readable + unique + valid Verilog identifier for a block's
       //-- signal/port: the user label sanitized, suffixed with the block's
-      //-- digest, e.g. "led out" -> "led_out_v6a99a7"; unlabeled -> "v6a99a7".
-      //-- The digest suffix keeps names unique without a dedup pass and can
-      //-- never leave a bare Verilog keyword. Synthetic blocks (board-rules
-      //-- init ports, whose id is NOT a UUID) keep the plain digest so they
-      //-- stay in lockstep with the constraint compilers' 'v' + name form.
+      //-- digest, e.g. "led out" -> "led_out_v6a99a7". Unlabeled I/O blocks
+      //-- fall back to a POSITIONAL name (in0/in1/out0... among the unlabeled
+      //-- blocks of the same type, in graph order) when the containing graph
+      //-- is provided — many existing library blocks define their I/O without
+      //-- labels and this gives their ports meaning; without a graph the
+      //-- fallback is the plain digest. The digest suffix keeps names unique
+      //-- without a dedup pass and can never leave a bare Verilog keyword.
+      //-- Synthetic blocks (board-rules init ports, whose id is NOT a UUID)
+      //-- keep the plain digest so they stay in lockstep with the constraint
+      //-- compilers' 'v' + name form.
       //-- IMPORTANT: this name is used for the generated Verilog AND the
-      //-- constraint files (pcf/lpf/cst/xdc); both must always match.
-      this.blockSignalName = function (block) {
+      //-- constraint files (pcf/lpf/cst/xdc); every consumer of the same
+      //-- block must call it with the same graph so all sides always match.
+      this.blockSignalName = function (block, graph) {
         var hash = this.digestId(block.id);
         if (typeof block.id !== 'string' || block.id.indexOf('-') === -1) {
           return hash;
         }
         var raw = (block.data && block.data.name) || '';
         var base = this.normalizeVerilogName(String(raw).trim());
+        if (!base && graph && graph.blocks) {
+          //-- Positional fallback: ordinal among the same-type blocks whose
+          //-- label is empty AFTER normalization (a symbols-only label
+          //-- normalizes to '' and is therefore positional too).
+          var prefix =
+            block.type === 'basic.input'
+              ? 'in'
+              : block.type === 'basic.output'
+                ? 'out'
+                : '';
+          if (prefix) {
+            var k = 0;
+            for (var i in graph.blocks) {
+              var b = graph.blocks[i];
+              if (!b || b.type !== block.type) {
+                continue;
+              }
+              var lbl = (b.data && b.data.name) || '';
+              if (this.normalizeVerilogName(String(lbl).trim()) !== '') {
+                continue;
+              }
+              if (b.id === block.id) {
+                base = prefix + k;
+                break;
+              }
+              k++;
+            }
+          }
+        }
         return base ? base + '_' + hash : hash;
       };
 
