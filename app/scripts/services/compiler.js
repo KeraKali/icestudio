@@ -758,6 +758,18 @@ angular
       return depPrefix(dep) + '__' + utils.digestId(type);
     }
 
+    //-- Comment banner with a package's name and description, emitted right
+    //-- before the module it documents.
+    function packageHeader(pkg) {
+      var h = '\n';
+      h += '//---------------------------------------------------\n';
+      h += '//-- ' + pkg.name + '\n';
+      h += '//-- - - - - - - - - - - - - - - - - - - - - - - - --\n';
+      h += '//-- ' + (pkg.description || '') + '\n';
+      h += '//---------------------------------------------------\n';
+      return h;
+    }
+
     //-- Readable label of a block instance: the user's per-instance custom
     //-- name (block.data.name) or, for library blocks, the type's package
     //-- name; '' when neither exists. Shared by the instance headers
@@ -1015,26 +1027,21 @@ angular
             content: content,
           };
 
-          code += '//---- Top entity';
+          //-- Comment header BEFORE the module it describes: '---- Top
+          //-- entity' only for main (verilogCompiler recurses for every
+          //-- dependency, so an unconditional line here used to stamp 'Top
+          //-- entity' on all 30+ modules); dependencies get their package
+          //-- name + description instead.
+          if (typeof project.package !== 'undefined' && project.package.name) {
+            code += packageHeader(project.package);
+          }
+          if (name === 'main') {
+            code += '//---- Top entity';
+          }
           code += module(data);
         }
 
         // Dependencies modules
-        //-- Generate the comments header for the module
-        if (typeof project.package !== 'undefined') {
-          //-- Separation from the previous verilog block
-          code += '\n';
-
-          //-- It is only generate if the project/block has a name
-          //-- Usually the top entity do not have a main
-          if (project.package.name) {
-            code += '//---------------------------------------------------\n';
-            code += '//-- ' + project.package.name + '\n';
-            code += '//-- - - - - - - - - - - - - - - - - - - - - - - - --\n';
-            code += '//-- ' + project.package.description + '\n';
-            code += '//---------------------------------------------------\n';
-          }
-        }
 
         for (var d in dependencies) {
           //-- Same helper as the instance headers (see depModuleName).
