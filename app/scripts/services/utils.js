@@ -1892,10 +1892,15 @@ angular
       //-- IMPORTANT: this name is used for the generated Verilog AND the
       //-- constraint files (pcf/lpf/cst/xdc); every consumer of the same
       //-- block must call it with the same graph so all sides always match.
-      this.blockSignalName = function (block, graph) {
-        var hash = this.digestId(block.id);
+      //-- Readable BASE of a block's signal name (no digest suffix): the
+      //-- sanitized user label, or the positional in<k>/out<k> fallback for
+      //-- unlabeled I/O when the containing graph is provided; '' when
+      //-- nothing readable exists (synthetic non-UUID blocks included).
+      //-- Used on its own to compose derived names (e.g. wire names from
+      //-- their driver) and by blockSignalName below.
+      this.blockSignalBase = function (block, graph) {
         if (typeof block.id !== 'string' || block.id.indexOf('-') === -1) {
-          return hash;
+          return '';
         }
         var raw = (block.data && block.data.name) || '';
         var base = this.normalizeVerilogName(String(raw).trim());
@@ -1928,6 +1933,15 @@ angular
             }
           }
         }
+        return base;
+      };
+
+      this.blockSignalName = function (block, graph) {
+        var hash = this.digestId(block.id);
+        if (typeof block.id !== 'string' || block.id.indexOf('-') === -1) {
+          return hash;
+        }
+        var base = this.blockSignalBase(block, graph);
         return base ? base + '_' + hash : hash;
       };
 

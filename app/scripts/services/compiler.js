@@ -452,6 +452,34 @@ angular
         }
       }
       graph.wires = utils.clone(wtemp);
+
+      //-- Deterministic wire order. The array order in the .ice reflects
+      //-- drawing history, so the generated w<n> indices (and the signal
+      //-- names derived from them) danced on every re-wire, invalidating
+      //-- apio's build cache and churning exported-Verilog diffs. Sorting by
+      //-- a stable endpoint key makes the same design always generate the
+      //-- same code. Array.prototype.sort is stable, so exact duplicates
+      //-- keep their relative order. This only touches the working copy:
+      //-- the .ice wire order is never rewritten.
+      graph.wires.sort(function (a, b) {
+        var ka =
+          a.source.block +
+          '|' +
+          (a.source.port || '') +
+          '|' +
+          a.target.block +
+          '|' +
+          (a.target.port || '');
+        var kb =
+          b.source.block +
+          '|' +
+          (b.source.port || '') +
+          '|' +
+          b.target.block +
+          '|' +
+          (b.target.port || '');
+        return ka < kb ? -1 : ka > kb ? 1 : 0;
+      });
       // End of rearrange design connections for compilation
 
       for (w in graph.wires) {
@@ -465,13 +493,17 @@ angular
           var paramValue = utils.digestId(constantBlock.id);
           if (paramValue) {
             connections.localparam.push(
-              'localparam p' + w + ' = ' + paramValue + ';'
+              'localparam ' +
+                paramSignalName(graph, w) +
+                ' = ' +
+                paramValue +
+                ';'
             );
           }
         } else {
           // Wires
           var range = wire.size ? ' [' + (wire.size - 1) + ':0] ' : ' ';
-          connections.wire.push('wire' + range + 'w' + w + ';');
+          connections.wire.push('wire' + range + wireName(graph, w) + ';');
         }
         // Assign Statements
         //-- I/O signal names must match the module ports emitted by
@@ -481,8 +513,8 @@ angular
           if (block.type === blocks.BASIC_INPUT) {
             if (wire.source.block === block.id) {
               connections.assign.push(
-                'assign w' +
-                  w +
+                'assign ' +
+                  wireName(graph, w) +
                   ' = ' +
                   utils.blockSignalName(block, graph) +
                   ';'
@@ -499,8 +531,8 @@ angular
                 connections.assign.push(
                   'assign ' +
                     utils.blockSignalName(block, graph) +
-                    ' = w' +
-                    w +
+                    ' = ' +
+                    wireName(graph, w) +
                     ';'
                 );
               }
@@ -527,7 +559,9 @@ angular
             gwi.source.port !== 'constant-out' &&
             gwi.source.port !== 'memory-out'
           ) {
-            content.push('assign w' + i + ' = w' + j + ';');
+            content.push(
+              'assign ' + wireName(graph, i) + ' = ' + wireName(graph, j) + ';'
+            );
           }
         }
       }
@@ -591,18 +625,12 @@ angular
         ) {
           // Header
           var instance;
-          //-- Readable label for the instance name below: the block type's
-          //-- package name for library blocks. Instance names only appear in
-          //-- generated code / VCD scopes / graph diagrams — the error
-          //-- mapping (normalizeCodeError) never parses them.
-          var instanceLabel = '';
           if (block.type === blocks.BASIC_CODE) {
             instance = name + '_' + utils.digestId(block.id);
           } else {
             //-- The referenced module name MUST come from the same helper the
             //-- declaration uses (see depModuleName).
             instance = depModuleName(block.type, currentLibrary[block.type]);
-            instanceLabel = depPrefix(currentLibrary[block.type]);
           }
 
           //-- Parameters
@@ -623,7 +651,7 @@ angular
                 paramName.charAt(0) === '@' ? paramName.substr(1) : paramName;
               var param = '';
               param += ' .' + paramName;
-              param += '(p' + w + ')';
+              param += '(' + paramSignalName(graph, w) + ')';
               params.push(param);
             }
           }
@@ -639,10 +667,7 @@ angular
           //-- package name; plain digest when neither exists. Instance names
           //-- only appear in generated code / VCD scopes / graph diagrams —
           //-- the error mapping (normalizeCodeError) never parses them.
-          var customLabel = utils.normalizeVerilogName(
-            String((block.data && block.data.name) || '').trim()
-          );
-          var instLabel = customLabel || instanceLabel;
+          var instLabel = instanceLabelOf(block);
           instance +=
             ' ' + (instLabel ? instLabel + '_' : '') + utils.digestId(block.id);
 
@@ -695,7 +720,7 @@ angular
               portName.charAt(0) === '@' ? portName.substr(1) : portName;
             var port = '';
             port += ' .' + portName;
-            port += '(w' + w + ')';
+            port += '(' + wireName(graph, w) + ')';
             ports.push(port);
           }
         }
@@ -731,6 +756,73 @@ angular
     //-- any design whose blocks were saved without a package name.
     function depModuleName(type, dep) {
       return depPrefix(dep) + '__' + utils.digestId(type);
+    }
+
+    //-- Readable label of a block instance: the user's per-instance custom
+    //-- name (block.data.name) or, for library blocks, the type's package
+    //-- name; '' when neither exists. Shared by the instance headers
+    //-- (getInstances) and the wire names derived from their driver.
+    function instanceLabelOf(block) {
+      var custom = utils.normalizeVerilogName(
+        String((block.data && block.data.name) || '').trim()
+      );
+      if (custom) {
+        return custom;
+      }
+      if (block.type !== blocks.BASIC_CODE && currentLibrary[block.type]) {
+        return depPrefix(currentLibrary[block.type]);
+      }
+      return '';
+    }
+
+    //-- Readable name for the internal signal of wire w: derived from its
+    //-- driver ('<label>_<port>_w<n>', e.g. 'Button_tic_Press_w1'), falling
+    //-- back to plain 'w<n>' when the driver is not resolvable. Purely local
+    //-- to each generated module: the declaration (getContent) and every
+    //-- usage (assigns and getInstances' port maps) share this helper, so
+    //-- they can never drift apart.
+    function wireName(graph, w) {
+      var wire = graph.wires[w];
+      var base = '';
+      var src = wire ? findBlock(wire.source.block, graph) : null;
+      if (src) {
+        if (src.type === blocks.BASIC_INPUT) {
+          //-- Driven by an input port block: reuse its readable base.
+          base = utils.blockSignalBase(src, graph);
+        } else if (src.type === blocks.BASIC_CODE) {
+          //-- Driven by a code block: '<label|code>_<port>'.
+          base =
+            (instanceLabelOf(src) || 'code') +
+            '_' +
+            utils.normalizeVerilogName(
+              String(wire.source.port || '').replace('@', '')
+            );
+        } else if (!src.type.startsWith('basic.')) {
+          //-- Driven by a generic block: '<label>_<dep io base>'. The source
+          //-- port is the id of the I/O block inside the dependency.
+          var dep = currentLibrary[src.type];
+          var depIo =
+            dep && dep.design && dep.design.graph
+              ? findBlock(wire.source.port, dep.design.graph)
+              : null;
+          var portBase = depIo
+            ? utils.blockSignalBase(depIo, dep.design.graph)
+            : '';
+          base = instanceLabelOf(src) + (portBase ? '_' + portBase : '');
+        }
+      }
+      return base ? base + '_w' + w : 'w' + w;
+    }
+
+    //-- Readable name for the localparam of wire w (constant/memory driver):
+    //-- '<label>_p<n>' when the block is labeled, plain 'p<n>' otherwise.
+    //-- Declaration (getContent) and instance parameter maps (getInstances)
+    //-- share this helper.
+    function paramSignalName(graph, w) {
+      var wire = graph.wires[w];
+      var src = wire ? findBlock(wire.source.block, graph) : null;
+      var base = src ? utils.blockSignalBase(src, graph) : '';
+      return base ? base + '_p' + w : 'p' + w;
     }
 
     this.getInitPorts = getInitPorts;
