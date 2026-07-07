@@ -295,16 +295,14 @@ angular
       return params;
     }
 
-    //-- Identifier for an I/O block's port/signal. The TOP module (and the
-    //-- constraint files, which always describe the top) use the readable
-    //-- form (label + digest, e.g. 'led_v6a99a7'); dependency modules keep the
-    //-- plain digest because their instances are wired by block id in
-    //-- connectPort()/getInstances() — both sides must stay in lockstep.
-    function ioName(block, readable) {
-      return readable ? utils.blockSignalName(block) : utils.digestId(block.id);
-    }
-
-    function getPorts(project, readable) {
+    //-- Ports of every generated module (top AND dependencies) carry the
+    //-- readable form (label + digest, e.g. 'led_v6a99a7') from
+    //-- utils.blockSignalName. The instance side is named through the same
+    //-- helper by resolving the I/O block inside the dependency's graph (see
+    //-- connectPort), so declaration and instance can never drift apart.
+    //-- Synthetic board-rules init blocks (non-UUID ids) keep the plain
+    //-- digest inside blockSignalName itself, matching the constraint files.
+    function getPorts(project) {
       var ports = {
         in: [],
         out: [],
@@ -320,12 +318,12 @@ angular
             block.data.inout === true
           ) {
             ports.inout.push({
-              name: ioName(block, readable),
+              name: utils.blockSignalName(block),
               range: block.data.range ? block.data.range : '',
             });
           } else {
             ports.in.push({
-              name: ioName(block, readable),
+              name: utils.blockSignalName(block),
               range: block.data.range ? block.data.range : '',
             });
           }
@@ -335,12 +333,12 @@ angular
             block.data.inout === true
           ) {
             ports.inout.push({
-              name: ioName(block, readable),
+              name: utils.blockSignalName(block),
               range: block.data.range ? block.data.range : '',
             });
           } else {
             ports.out.push({
-              name: ioName(block, readable),
+              name: utils.blockSignalName(block),
               range: block.data.range ? block.data.range : '',
             });
           }
@@ -477,13 +475,13 @@ angular
         }
         // Assign Statements
         //-- I/O signal names must match the module ports emitted by
-        //-- getPorts(): readable form only for the top module.
+        //-- getPorts() — the same blockSignalName in every module.
         for (i in graph.blocks) {
           var block = graph.blocks[i];
           if (block.type === blocks.BASIC_INPUT) {
             if (wire.source.block === block.id) {
               connections.assign.push(
-                'assign w' + w + ' = ' + ioName(block, name === 'main') + ';'
+                'assign w' + w + ' = ' + utils.blockSignalName(block) + ';'
               );
             }
           } else if (block.type === blocks.BASIC_OUTPUT) {
@@ -495,7 +493,7 @@ angular
                 // connections.assign.push('assign ' + digestId(block.id) + ' = p' + w + ';');
               } else {
                 connections.assign.push(
-                  'assign ' + ioName(block, name === 'main') + ' = w' + w + ';'
+                  'assign ' + utils.blockSignalName(block) + ' = w' + w + ';'
                 );
               }
             }
@@ -668,7 +666,18 @@ angular
       function connectPort(portName, portsNames, ports, block) {
         if (portName) {
           if (block.type !== blocks.BASIC_CODE) {
-            portName = utils.digestId(portName);
+            //-- Generic block: the wire's port id is the id of the I/O block
+            //-- INSIDE the dependency. Resolve that block and name the
+            //-- instance port exactly like the dependency module declares it
+            //-- (blockSignalName); fall back to the digest if not resolvable.
+            var dep = currentLibrary[block.type];
+            var depIo =
+              dep && dep.design && dep.design.graph
+                ? findBlock(portName, dep.design.graph)
+                : null;
+            portName = depIo
+              ? utils.blockSignalName(depIo)
+              : utils.digestId(portName);
           }
           if (portsNames.indexOf(portName) === -1) {
             portsNames.push(portName);
@@ -845,9 +854,9 @@ angular
 
           var params = getParams(project);
 
-          //-- Top module ports carry the user's block label (readable form);
-          //-- dependency modules keep digest names (see ioName()).
-          var ports = getPorts(project, name === 'main');
+          //-- Every module's ports carry the user's block label (readable
+          //-- form): the top AND the dependency modules (see getPorts()).
+          var ports = getPorts(project);
 
           var content = getContent(name, project);
 
@@ -1540,7 +1549,7 @@ angular
       for (var i in graph.blocks) {
         var block = graph.blocks[i];
         //-- id must be byte-identical to the top module port emitted by
-        //-- getPorts(project, true) — it is used in the testbench port map.
+        //-- getPorts(project) — it is used in the testbench port map.
         if (block.type === blocks.BASIC_INPUT) {
           if (block.data.name) {
             pname = block.data.name.replace('@', '');
