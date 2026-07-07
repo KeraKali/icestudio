@@ -599,15 +599,10 @@ angular
           if (block.type === blocks.BASIC_CODE) {
             instance = name + '_' + utils.digestId(block.id);
           } else {
-            let prefix = currentLibrary[block.type].package.name ?? '';
-            prefix = utils.normalizeVerilogName(prefix);
-            instanceLabel = prefix;
-            if (prefix.length > 0) {
-              prefix += '__';
-            }
-            instance = `${prefix}${utils.digestId(block.type)}`;
-
-            // instance = utils.digestId(block.type);
+            //-- The referenced module name MUST come from the same helper the
+            //-- declaration uses (see depModuleName).
+            instance = depModuleName(block.type, currentLibrary[block.type]);
+            instanceLabel = depPrefix(currentLibrary[block.type]);
           }
 
           //-- Parameters
@@ -716,6 +711,26 @@ angular
         }
       }
       return null;
+    }
+
+    //-- Normalized package-name prefix of a dependency, with a 'pkg' fallback
+    //-- when the package has no usable name (null, empty or symbols-only), so
+    //-- the module name never degenerates.
+    function depPrefix(dep) {
+      return (
+        utils.normalizeVerilogName(
+          String((dep && dep.package && dep.package.name) || '').trim()
+        ) || 'pkg'
+      );
+    }
+
+    //-- Module name of a dependency type ('<pkg>__<digest>'). The declaration
+    //-- (verilogCompiler's dependency loop) and the instance headers
+    //-- (getInstances) MUST both use this helper: an asymmetric fallback here
+    //-- used to declare '__vXXX' while instances referenced 'vXXX', breaking
+    //-- any design whose blocks were saved without a package name.
+    function depModuleName(type, dep) {
+      return depPrefix(dep) + '__' + utils.digestId(type);
     }
 
     this.getInitPorts = getInitPorts;
@@ -889,7 +904,7 @@ angular
               ports.out.push({
                 name: 'vinit',
                 //range: [0:' + (n - 1) + ']'
-                range: `[${n - 1}:0 ]`,
+                range: `[${n - 1}:0]`,
               });
               // Generate port value
               var value = n.toString() + "'b";
@@ -929,12 +944,10 @@ angular
           }
         }
 
-        let prefix = '';
         for (var d in dependencies) {
-          prefix = dependencies[d].package.name ?? 'pkg';
-          prefix = utils.normalizeVerilogName(prefix);
+          //-- Same helper as the instance headers (see depModuleName).
           code += verilogCompiler(
-            `${prefix}__${utils.digestId(d)}`,
+            depModuleName(d, dependencies[d]),
             dependencies[d]
           );
         }
