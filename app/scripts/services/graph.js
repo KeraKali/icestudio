@@ -124,6 +124,11 @@ angular.module('icestudio').service(
     this.breadcrumbs = [{ name: '', type: '' }];
     this.addingDraggableBlock = false;
 
+    //-- Errors from the last verify/build (as emitted via the 'codeError'
+    //-- event). Kept so the markers can be re-applied on every loadDesign
+    //-- (navigating into/out of submodules) until the next run clears them.
+    let activeCodeErrors = [];
+
     //-----------------------------------------------------------------------
     //-- Returns a deep copy of the View state
     //-----------------------------------------------------------------------
@@ -1310,6 +1315,8 @@ angular.module('icestudio').service(
 
     this.resetBreadcrumbs = function (name) {
       this.breadcrumbs = [{ name: name, type: '' }];
+      //-- New/opened project: the previous project's error trail is stale.
+      activeCodeErrors = [];
       utils.rootScopeSafeApply();
     };
 
@@ -1994,6 +2001,14 @@ angular.module('icestudio').service(
           self.fitContent();
           //-- maintain autorouting disabled for the moment because there is overlapped routings
           // self.route();
+          //-- Re-apply the error markers from the last verify/build so the
+          //-- trail stays visible while navigating into/out of submodules
+          //-- (deferred: lets the fresh cell views finish rendering).
+          if (activeCodeErrors.length) {
+            setTimeout(function () {
+              activeCodeErrors.forEach(paintCodeError);
+            }, 0);
+          }
           if (callback) {
             callback();
             //self.enableAutoRouting();
@@ -2420,6 +2435,8 @@ angular.module('icestudio').service(
     }*/
 
     this.resetCodeErrors = function () {
+      //-- A new verify/build run starts: drop the previous error trail.
+      activeCodeErrors = [];
       let cells = graph.getCells();
       return new Promise(function (resolve) {
         _.each(cells, function (cell) {
@@ -2449,43 +2466,108 @@ angular.module('icestudio').service(
       });
     };
 
-    $(document).on('codeError', function (evt, codeError) {
-      let cells = graph.getCells();
-      _.each(cells, function (cell) {
-        var blockId, cellView;
-        if (
-          (codeError.blockType === 'code' && cell.get('type') === 'ice.Code') ||
-          (codeError.blockType === 'constant' &&
-            cell.get('type') === 'ice.Constant')
-        ) {
-          blockId = utils.digestId(cell.id);
-        } else if (
-          codeError.blockType === 'generic' &&
-          cell.get('type') === 'ice.Generic'
-        ) {
-          blockId = utils.digestId(cell.attributes.blockType);
+    //-- True when the type subtree rooted at rootType (inclusive) contains a
+    //-- dependency whose digest is targetDigest. Drives the error cascade: a
+    //-- generic block gets the alert sticker when the error lives anywhere
+    //-- inside it (a module within a module within a module...), so the trail
+    //-- is visible from the top and can be followed while navigating down.
+    function typeSubtreeHasDigest(rootType, targetDigest) {
+      var deps = common.allDependencies || {};
+      var queue = [rootType];
+      var seen = {};
+      while (queue.length) {
+        var t = queue.pop();
+        if (!t || seen[t]) {
+          continue;
         }
-        if (codeError.blockId === blockId) {
-          cellView = paper.findViewByModel(cell);
-          if (codeError.type === 'error') {
-            if (cell.get('type') === 'ice.Code') {
-              $('.sticker-error', cellView.$box).remove();
-              cellView.$box
-                .find('.code-content')
-                .addClass('highlight-error')
-                .append('<div class="sticker-error error-code-editor"></div>');
-            } else {
-              $('.sticker-error', cellView.$box).remove();
-              cellView.$box
-                .addClass('highlight-error')
-                .append('<div class="sticker-error"></div>');
+        seen[t] = true;
+        if (utils.digestId(t) === targetDigest) {
+          return true;
+        }
+        var dep = deps[t];
+        if (dep && dep.design && dep.design.graph) {
+          var blks = dep.design.graph.blocks || [];
+          for (var i = 0; i < blks.length; i++) {
+            if (deps[blks[i].type]) {
+              queue.push(blks[i].type);
             }
           }
-          if (cell.get('type') === 'ice.Code') {
+        }
+      }
+      return false;
+    }
+
+    //-- Paint one normalized error on the CURRENT view's cells.
+    //-- Direct hit (the culprit itself is visible): red highlight + sticker
+    //-- (+ ace annotations on code blocks). Cascade hit (a generic block whose
+    //-- subtree contains the culprit type): alert sticker only.
+    function paintCodeError(codeError) {
+      let cells = graph.getCells();
+      _.each(cells, function (cell) {
+        var cellType = cell.get('type');
+        var direct = false;
+        var cascade = false;
+        if (codeError.blockType === 'code' && cellType === 'ice.Code') {
+          direct = utils.digestId(cell.id) === codeError.blockId;
+        } else if (
+          codeError.blockType === 'constant' &&
+          cellType === 'ice.Constant'
+        ) {
+          direct = utils.digestId(cell.id) === codeError.blockId;
+        } else if (
+          codeError.blockType === 'generic' &&
+          cellType === 'ice.Generic'
+        ) {
+          direct =
+            utils.digestId(cell.attributes.blockType) === codeError.blockId;
+        }
+        if (
+          !direct &&
+          cellType === 'ice.Generic' &&
+          codeError.typeDigest &&
+          codeError.type === 'error'
+        ) {
+          cascade = typeSubtreeHasDigest(
+            cell.attributes.blockType,
+            codeError.typeDigest
+          );
+        }
+        if (!direct && !cascade) {
+          return;
+        }
+        var cellView = paper.findViewByModel(cell);
+        if (!cellView || !cellView.$box) {
+          return;
+        }
+        if (codeError.type === 'error') {
+          if (cellType === 'ice.Code' && direct) {
+            $('.sticker-error', cellView.$box).remove();
+            cellView.$box
+              .find('.code-content')
+              .addClass('highlight-error')
+              .append('<div class="sticker-error error-code-editor"></div>');
+          } else {
+            $('.sticker-error', cellView.$box).remove();
+            if (direct) {
+              cellView.$box.addClass('highlight-error');
+            }
+            cellView.$box.append('<div class="sticker-error"></div>');
+          }
+        }
+        if (cellType === 'ice.Code' && direct) {
+          try {
             cellView.setAnnotation(codeError);
+          } catch (e) {
+            //-- The ace editor of a freshly loaded view may not be ready yet;
+            //-- the sticker/highlight above is already applied.
           }
         }
       });
+    }
+
+    $(document).on('codeError', function (evt, codeError) {
+      activeCodeErrors.push(codeError);
+      paintCodeError(codeError);
     });
   }
 );

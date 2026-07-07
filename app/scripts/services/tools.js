@@ -1877,6 +1877,34 @@ angular
         return modules;
       }
 
+      //-- Classify a generated-module name into the design element it comes
+      //-- from. Generated names (see compiler.js):
+      //--   'main'                     -> top module
+      //--   'main_<vBLOCK>'            -> code block at top level
+      //--   '<pkg>__<vTYPE>'           -> dependency (generic) type module
+      //--   '<pkg>__<vTYPE>_<vBLOCK>'  -> code block inside dependency vTYPE
+      //-- blockId = digest of the culprit block/type. typeDigest = digest of
+      //-- the dependency TYPE whose module contains the error (null at top
+      //-- level); graph.js uses it to cascade the error marker to every
+      //-- generic block whose type subtree contains the culprit, so the trail
+      //-- is visible from the top down while navigating.
+      function classifyModuleName(name) {
+        var m;
+        if (name === 'main') {
+          return { scope: 'main', typeDigest: null };
+        }
+        if ((m = /^main_(v[0-9a-fA-F]{6})$/.exec(name))) {
+          return { scope: 'code', blockId: m[1], typeDigest: null };
+        }
+        if ((m = /^(.*)__(v[0-9a-fA-F]{6})_(v[0-9a-fA-F]{6})$/.exec(name))) {
+          return { scope: 'code', blockId: m[3], typeDigest: m[2] };
+        }
+        if ((m = /^(.*)__(v[0-9a-fA-F]{6})$/.exec(name))) {
+          return { scope: 'generic', blockId: m[2], typeDigest: m[2] };
+        }
+        return { scope: 'unknown', typeDigest: null };
+      }
+
       function normalizeCodeError(codeError, modules) {
         var newCodeError;
         // Find the module with the error
@@ -1892,40 +1920,46 @@ angular
             //  but the origin is the constant block value
             var re = /Failed\sto\sdetect\swidth\sfor\sparameter\s\\(.*?)\sat/g;
             var matchConstant = re.exec(newCodeError.msg);
+            var cls = classifyModuleName(module.name);
+            newCodeError.typeDigest = cls.typeDigest;
 
             if (codeError.line > module.begin && !matchConstant) {
-              if (module.name.startsWith('main_')) {
-                // Code block
-                newCodeError.blockId = module.name.split('_')[1];
+              if (cls.scope === 'code') {
+                // Code block (top level or inside a dependency)
+                newCodeError.blockId = cls.blockId;
                 newCodeError.blockType = 'code';
                 newCodeError.line =
                   codeError.line -
                   module.begin -
                   (codeError.line === module.end ? 1 : 0);
-              } else {
-                // Generic block
-
-                newCodeError.blockId = module.name.split('_')[0];
+              } else if (cls.scope === 'generic') {
+                // Body of a dependency (generic) module
+                newCodeError.blockId = cls.blockId;
                 newCodeError.blockType = 'generic';
               }
+              //-- 'main' body / unknown module: no cell to attach the sticker
+              //-- to; the error still raises the "errors detected" alert.
               break;
             } else {
-              if (module.name === 'main') {
-                // Constant block
-                for (var j in module.params) {
-                  var param = module.params[j];
-                  if (
-                    codeError.line === param.line ||
-                    (matchConstant && param.name === matchConstant[1])
-                  ) {
-                    newCodeError.blockId = param.name;
-                    newCodeError.blockType = 'constant';
-                    break;
-                  }
+              // Header/parameter zone (or a yosys parameter-width error):
+              // map the parameter back to the constant block that feeds it.
+              // Parameter names carry the constant block digest both in main
+              // and in dependency modules.
+              var matched = false;
+              for (var j in module.params) {
+                var param = module.params[j];
+                if (
+                  codeError.line === param.line ||
+                  (matchConstant && param.name === matchConstant[1])
+                ) {
+                  newCodeError.blockId = param.name;
+                  newCodeError.blockType = 'constant';
+                  matched = true;
+                  break;
                 }
-              } else {
-                // Generic block
-                newCodeError.blockId = module.name;
+              }
+              if (!matched && cls.scope === 'generic') {
+                newCodeError.blockId = cls.blockId;
                 newCodeError.blockType = 'generic';
               }
               break;
