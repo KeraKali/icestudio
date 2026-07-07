@@ -295,7 +295,16 @@ angular
       return params;
     }
 
-    function getPorts(project) {
+    //-- Identifier for an I/O block's port/signal. The TOP module (and the
+    //-- constraint files, which always describe the top) use the readable
+    //-- form (label + digest, e.g. 'led_v6a99a7'); dependency modules keep the
+    //-- plain digest because their instances are wired by block id in
+    //-- connectPort()/getInstances() — both sides must stay in lockstep.
+    function ioName(block, readable) {
+      return readable ? utils.blockSignalName(block) : utils.digestId(block.id);
+    }
+
+    function getPorts(project, readable) {
       var ports = {
         in: [],
         out: [],
@@ -311,12 +320,12 @@ angular
             block.data.inout === true
           ) {
             ports.inout.push({
-              name: utils.digestId(block.id),
+              name: ioName(block, readable),
               range: block.data.range ? block.data.range : '',
             });
           } else {
             ports.in.push({
-              name: utils.digestId(block.id),
+              name: ioName(block, readable),
               range: block.data.range ? block.data.range : '',
             });
           }
@@ -326,12 +335,12 @@ angular
             block.data.inout === true
           ) {
             ports.inout.push({
-              name: utils.digestId(block.id),
+              name: ioName(block, readable),
               range: block.data.range ? block.data.range : '',
             });
           } else {
             ports.out.push({
-              name: utils.digestId(block.id),
+              name: ioName(block, readable),
               range: block.data.range ? block.data.range : '',
             });
           }
@@ -467,12 +476,14 @@ angular
           connections.wire.push('wire' + range + 'w' + w + ';');
         }
         // Assign Statements
+        //-- I/O signal names must match the module ports emitted by
+        //-- getPorts(): readable form only for the top module.
         for (i in graph.blocks) {
           var block = graph.blocks[i];
           if (block.type === blocks.BASIC_INPUT) {
             if (wire.source.block === block.id) {
               connections.assign.push(
-                'assign w' + w + ' = ' + utils.digestId(block.id) + ';'
+                'assign w' + w + ' = ' + ioName(block, name === 'main') + ';'
               );
             }
           } else if (block.type === blocks.BASIC_OUTPUT) {
@@ -484,7 +495,7 @@ angular
                 // connections.assign.push('assign ' + digestId(block.id) + ' = p' + w + ';');
               } else {
                 connections.assign.push(
-                  'assign ' + utils.digestId(block.id) + ' = w' + w + ';'
+                  'assign ' + ioName(block, name === 'main') + ' = w' + w + ';'
                 );
               }
             }
@@ -574,11 +585,17 @@ angular
         ) {
           // Header
           var instance;
+          //-- Readable label for the instance name below: the block type's
+          //-- package name for library blocks. Instance names only appear in
+          //-- generated code / VCD scopes / graph diagrams — the error
+          //-- mapping (normalizeCodeError) never parses them.
+          var instanceLabel = '';
           if (block.type === blocks.BASIC_CODE) {
             instance = name + '_' + utils.digestId(block.id);
           } else {
             let prefix = currentLibrary[block.type].package.name ?? '';
             prefix = utils.normalizeVerilogName(prefix);
+            instanceLabel = prefix;
             if (prefix.length > 0) {
               prefix += '__';
             }
@@ -614,9 +631,12 @@ angular
             instance += ' #(\n' + params.join(',\n') + '\n)';
           }
 
-          //-- Instance name
-
-          instance += ' ' + utils.digestId(block.id);
+          //-- Instance name: readable label + digest ('Contador_v1a2b3')
+          //-- when the block type has a package name, plain digest otherwise.
+          instance +=
+            ' ' +
+            (instanceLabel ? instanceLabel + '_' : '') +
+            utils.digestId(block.id);
 
           //-- Ports
 
@@ -825,9 +845,9 @@ angular
 
           var params = getParams(project);
 
-          //-- Future improvement: After reading the ports, get the names defined in the .pcf or .lpf file
-          //-- these are better names to use in the top module, instead of the current not-for-humans pin names
-          var ports = getPorts(project);
+          //-- Top module ports carry the user's block label (readable form);
+          //-- dependency modules keep digest names (see ioName()).
+          var ports = getPorts(project, name === 'main');
 
           var content = getContent(name, project);
 
@@ -954,14 +974,14 @@ angular
               pin = block.data.pins[p];
               value = block.data.virtual ? '' : pin.value;
               code += xdcLine(
-                utils.digestId(block.id) + '[' + pin.index + ']',
+                utils.blockSignalName(block) + '[' + pin.index + ']',
                 value
               );
             }
           } else if (block.data.pins.length > 0) {
             pin = block.data.pins[0];
             value = block.data.virtual ? '' : pin.value;
-            code += xdcLine(utils.digestId(block.id), value);
+            code += xdcLine(utils.blockSignalName(block), value);
           }
         }
       }
@@ -1037,7 +1057,7 @@ angular
               pin = block.data.pins[p];
               value = block.data.virtual ? '' : pin.value;
               code += 'set_io ';
-              code += utils.digestId(block.id);
+              code += utils.blockSignalName(block);
               code += '[' + pin.index + '] ';
               code += value;
               code += '\n';
@@ -1046,7 +1066,7 @@ angular
             pin = block.data.pins[0];
             value = block.data.virtual ? '' : pin.value;
             code += 'set_io ';
-            code += utils.digestId(block.id);
+            code += utils.blockSignalName(block);
             code += ' ';
             code += value;
             code += '\n';
@@ -1143,13 +1163,13 @@ angular
               pin = block.data.pins[p];
               value = block.data.virtual ? '' : pin.value;
               code += 'LOCATE COMP "';
-              code += utils.digestId(block.id); //-- Future improvement: use pin.name. It should also be changed in the main module
+              code += utils.blockSignalName(block);
               code += '[' + pin.index + ']" SITE "';
               code += value;
               code += '";\n';
 
               code += 'IOBUF PORT "';
-              code += utils.digestId(block.id);
+              code += utils.blockSignalName(block);
               code += '[' + pin.index + ']" ';
 
               //-- Get the pullmode property of the physical pin (its id is pin.value)
@@ -1169,13 +1189,13 @@ angular
             pin = block.data.pins[0];
             value = block.data.virtual ? '' : pin.value;
             code += 'LOCATE COMP "';
-            code += utils.digestId(block.id); //-- Future improvement: use pin.name. It should also be changed in the main module
+            code += utils.blockSignalName(block);
             code += '" SITE "';
             code += value;
             code += '";\n';
 
             code += 'IOBUF PORT "';
-            code += utils.digestId(block.id);
+            code += utils.blockSignalName(block);
             code += '" ';
 
             //-- Get the pullmode property of the physical pin (its id is pin.value)
@@ -1239,12 +1259,12 @@ angular
             for (var p in block.data.pins) {
               pin = block.data.pins[p];
               value = block.data.virtual ? '' : pin.value;
-              emit(utils.digestId(block.id) + '[' + pin.index + ']', value);
+              emit(utils.blockSignalName(block) + '[' + pin.index + ']', value);
             }
           } else if (block.data.pins.length > 0) {
             pin = block.data.pins[0];
             value = block.data.virtual ? '' : pin.value;
-            emit(utils.digestId(block.id), value);
+            emit(utils.blockSignalName(block), value);
           }
         }
       }
@@ -1504,20 +1524,35 @@ angular
       var outputUnnamed = 0;
       var graph = project.design.graph;
       let pname = '';
+      //-- The testbench declares one reg/wire per port in a single scope, so
+      //-- repeated block labels (two 'LED' outputs) must be de-duplicated or
+      //-- the generated main_tb.v does not compile ('LED' already declared).
+      //-- Shared across inputs and outputs; first occurrence keeps the name.
+      var seenNames = {};
+      function uniqueName(n) {
+        if (!seenNames[n]) {
+          seenNames[n] = 1;
+          return n;
+        }
+        seenNames[n] += 1;
+        return n + '_' + seenNames[n];
+      }
       for (var i in graph.blocks) {
         var block = graph.blocks[i];
+        //-- id must be byte-identical to the top module port emitted by
+        //-- getPorts(project, true) — it is used in the testbench port map.
         if (block.type === blocks.BASIC_INPUT) {
           if (block.data.name) {
             pname = block.data.name.replace('@', '');
             input.push({
-              id: utils.digestId(block.id),
-              name: pname.replace(/ /g, '_'),
+              id: utils.blockSignalName(block),
+              name: uniqueName(pname.replace(/ /g, '_')),
               range: block.data.range,
             });
           } else {
             input.push({
-              id: utils.digestId(block.id),
-              name: inputUnnamed.toString(),
+              id: utils.blockSignalName(block),
+              name: uniqueName(inputUnnamed.toString()),
             });
             inputUnnamed += 1;
           }
@@ -1525,14 +1560,14 @@ angular
           if (block.data.name) {
             pname = block.data.name.replace('@', '');
             output.push({
-              id: utils.digestId(block.id),
-              name: pname.replace(/ /g, '_'),
+              id: utils.blockSignalName(block),
+              name: uniqueName(pname.replace(/ /g, '_')),
               range: block.data.range,
             });
           } else {
             output.push({
-              id: utils.digestId(block.id),
-              name: outputUnnamed.toString(),
+              id: utils.blockSignalName(block),
+              name: uniqueName(outputUnnamed.toString()),
             });
             outputUnnamed += 1;
           }

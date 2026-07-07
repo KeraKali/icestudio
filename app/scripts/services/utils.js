@@ -1877,6 +1877,25 @@ angular
         return 'v' + id.substring(0, 6);
       };
 
+      //-- Human-readable + unique + valid Verilog identifier for a block's
+      //-- signal/port: the user label sanitized, suffixed with the block's
+      //-- digest, e.g. "led out" -> "led_out_v6a99a7"; unlabeled -> "v6a99a7".
+      //-- The digest suffix keeps names unique without a dedup pass and can
+      //-- never leave a bare Verilog keyword. Synthetic blocks (board-rules
+      //-- init ports, whose id is NOT a UUID) keep the plain digest so they
+      //-- stay in lockstep with the constraint compilers' 'v' + name form.
+      //-- IMPORTANT: this name is used for the generated Verilog AND the
+      //-- constraint files (pcf/lpf/cst/xdc); both must always match.
+      this.blockSignalName = function (block) {
+        var hash = this.digestId(block.id);
+        if (typeof block.id !== 'string' || block.id.indexOf('-') === -1) {
+          return hash;
+        }
+        var raw = (block.data && block.data.name) || '';
+        var base = this.normalizeVerilogName(String(raw).trim());
+        return base ? base + '_' + hash : hash;
+      };
+
       this.beginBlockingTask = async function () {
         angular.element('#menu').addClass('is-disabled');
         //document.body.classList.add('waiting');
