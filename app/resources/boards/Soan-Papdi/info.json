@@ -11,5 +11,8 @@
     "brams": 30
   },
   "arch": "ice40",
-  "group": "UP5K"
+  "group": "UP5K",
+  "apio": {
+    "board": "soan-papdi"
+  }
 }
